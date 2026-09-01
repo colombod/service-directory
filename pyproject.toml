@@ -23,5 +23,10 @@ packages = ["src/service_directory"]
 [dependency-groups]
 dev = [
     "pytest>=8.0",
-    "httpx>=0.27",
+    "httpx2>=2.12",
 ]
+
+[tool.pytest.ini_options]
+# A brand-new project ships warning-clean: deprecation warnings fail the suite,
+# so regressions of this class can't creep back in silently.
+filterwarnings = ["error::DeprecationWarning"]
