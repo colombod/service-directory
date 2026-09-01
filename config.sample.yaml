@@ -1,0 +1,9 @@
+host_addresses:
+  - {label: "Tailnet", host: "100.111.191.22"}   # tailnet-first (precedence)
+  - {label: "LAN",     host: "192.168.1.86"}
+services:
+  - {name: "Resolve",              port: 8080, path: "/", description: "Amplifier Resolve dot-graph pipeline runner"}
+  - {name: "Context Intelligence", port: 8000, path: "/"}
+  - {name: "muxplex",              port: 8088}
+  - {name: "muxterm",              port: 8311}
+  - {name: "browser-bridge hub",   port: 8900}

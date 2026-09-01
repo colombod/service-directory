@@ -21,8 +21,37 @@ performed locally (where Tailscale and the real services exist).
 - Block 3 — Self-management (`doctor`, systemd/launchd service install, upgrade,
   uv-tool packaging). *(planned)*
 
-## Run (once built)
+## Install
+
+```bash
+uv tool install .
+```
+
+This exposes a `service-directory` console script (see `pyproject.toml`).
+
+## Run
 
 ```bash
 SERVICE_REGISTRY_CONFIG=./config.sample.yaml service-directory serve
 ```
+
+By default this binds `0.0.0.0:80`. Override with `--host`/`--port` flags or
+the `SERVICE_REGISTRY_HOST`/`SERVICE_REGISTRY_PORT` env vars if port 80 is
+unavailable (a preflight check produces a clear error instead of crash-looping
+if the requested host/port can't be bound).
+
+- `GET /` — HTML dashboard listing each service with a clickable link per
+  configured host address.
+- `GET /api/services` — JSON of the resolved services × URLs (same data the
+  HTML page renders from).
+- `GET /api/health` — best-effort `{service: up|down}` connectivity snapshot
+  (≤1s per check); the page still renders even if every check fails.
+
+## Develop / test
+
+```bash
+uv run pytest
+```
+
+The test suite is fully hermetic: no real network calls, no real port
+binding — connectivity checks are stubbed via dependency injection.
