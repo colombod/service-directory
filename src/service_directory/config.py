@@ -19,6 +19,7 @@ message -- never an unhandled stack trace.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
@@ -51,6 +52,76 @@ def is_safe_docs_url(url: str) -> bool:
     except ValueError:
         return False
     return scheme in ALLOWED_DOCS_URL_SCHEMES
+
+
+# SSRF hardening: a dynamic registry entry's health_url (and the TCP
+# fallback target built from its url/port) is fully caller-supplied --
+# any write-access caller (a valid write token, or the localhost bypass)
+# can point it anywhere. Without a target allow-list, every hit of
+# GET /api/health becomes a server-side-request-forgery primitive: a real
+# outbound HTTP GET / TCP connect to an attacker-chosen host, including
+# loopback ports, RFC1918-private LAN services, link-local addresses, and
+# the cloud-metadata address 169.254.169.254. Block those ranges by
+# default (mirrors the docs_url scheme allow-list approach); an operator
+# who genuinely runs everything on a private LAN/tailnet can opt in via
+# ``federation.allow_private_health_targets``.
+def _is_private_or_reserved_host(host: str) -> bool:
+    """True if ``host`` is a loopback/link-local/private/reserved address.
+
+    Deliberately does NOT perform DNS resolution -- a health/TCP check
+    seam must stay usable with a stub checker in hermetic tests (no real
+    network I/O, including DNS lookups), and resolving a hostname just to
+    validate it would reintroduce exactly the network dependency those
+    tests forbid. Instead this blocks the concrete, literal targets an
+    attacker would use directly: an IP-literal host in a
+    loopback/link-local/private/reserved range (covers 127.0.0.1,
+    169.254.169.254, 10/8, 172.16/12, 192.168/16, etc.) and the
+    well-known ``localhost`` name. A caller-supplied *hostname* that only
+    resolves to an internal address at request time (DNS rebinding) is a
+    known, accepted residual risk of this lightweight check -- operators
+    with that threat model should keep dynamic registration restricted to
+    trusted write-token holders.
+    """
+    if host.lower() == "localhost":
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        # Not an IP literal -- a plain hostname. Without DNS resolution we
+        # cannot classify it further; treat as not-blocked (same posture
+        # as is_safe_docs_url, which never inspects hosts either).
+        return False
+    return (
+        addr.is_loopback
+        or addr.is_link_local
+        or addr.is_private
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
+def is_safe_health_target(url: str, *, allow_private: bool = False) -> bool:
+    """True iff ``url`` is safe to use as an outbound health-check target:
+    an allow-listed http(s) scheme AND (unless ``allow_private``) a host
+    that does not resolve to loopback/link-local/private/reserved space.
+
+    Used to guard BOTH the HTTP ``health_url`` GET and the TCP-connect
+    fallback built from a dynamic entry's ``url``/``port`` before either
+    ever performs real outbound I/O -- see ``health.check_service_entries``.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme.lower() not in ALLOWED_DOCS_URL_SCHEMES:
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    if allow_private:
+        return True
+    return not _is_private_or_reserved_host(host)
 
 
 class ConfigError(Exception):
@@ -91,8 +162,17 @@ class FederationConfig:
     base_url: str = ""
     state_dir: str | None = None
     require_read_token: bool = False
+    require_write_token: bool = False
     description: str | None = None
     role: str | None = None
+    # SSRF hardening (see is_safe_health_target in this module): a dynamic
+    # registry entry's health_url/url is caller-supplied and, by default,
+    # is never allowed to target loopback/link-local/RFC1918-private
+    # addresses (including the 169.254.169.254 cloud-metadata address).
+    # Operators who genuinely need to health-check internal-only targets
+    # (e.g. everything is on a private LAN/tailnet by design) can opt in
+    # explicitly.
+    allow_private_health_targets: bool = False
 
 
 @dataclass(frozen=True)
@@ -241,6 +321,12 @@ def _parse_federation(raw: object) -> FederationConfig:
             f"Invalid config: {context} field 'require_read_token' must be a "
             f"boolean (got {require_read_token!r})"
         )
+    require_write_token = raw.get("require_write_token", False)
+    if not isinstance(require_write_token, bool):
+        raise ConfigError(
+            f"Invalid config: {context} field 'require_write_token' must be a "
+            f"boolean (got {require_write_token!r})"
+        )
     description = raw.get("description")
     if description is not None and not isinstance(description, str):
         raise ConfigError(
@@ -252,14 +338,22 @@ def _parse_federation(raw: object) -> FederationConfig:
         raise ConfigError(
             f"Invalid config: {context} field 'role' must be a string (got {role!r})"
         )
+    allow_private_health_targets = raw.get("allow_private_health_targets", False)
+    if not isinstance(allow_private_health_targets, bool):
+        raise ConfigError(
+            f"Invalid config: {context} field 'allow_private_health_targets' must "
+            f"be a boolean (got {allow_private_health_targets!r})"
+        )
     return FederationConfig(
         enabled=enabled,
         name=name,
         base_url=base_url,
         state_dir=state_dir,
         require_read_token=require_read_token,
+        require_write_token=require_write_token,
         description=description,
         role=role,
+        allow_private_health_targets=allow_private_health_targets,
     )
 
 

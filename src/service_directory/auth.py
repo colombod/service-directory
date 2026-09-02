@@ -72,10 +72,39 @@ def require_read_access(request: Request, state_dir: str, required: bool) -> Non
     require_admin(request, state_dir)
 
 
+def require_write_access(
+    request: Request, state_dir: str, require_write_token: bool
+) -> None:
+    """Registry-mutation endpoints (``POST /api/services``, ``DELETE
+    /api/services/{name}``, ``POST /api/services/{name}/heartbeat``): EVERY
+    mutation requires authorization -- there is no unauthenticated path.
+
+    - A valid ``Authorization: Bearer <write-token>`` (verified with
+      ``hmac.compare_digest`` against the token persisted in the state dir
+      via ``write_token.py``) always authorizes the request.
+    - The localhost socket-IP bypass (same unforgeable mechanism as
+      ``require_admin``) is allowed BY DEFAULT as a local-convenience path,
+      but is gated by ``require_write_token`` (the ``federation
+      .require_write_token`` config flag, default ``False``): when True,
+      even localhost must present a valid write token -- no bypass.
+
+    Raises :class:`fastapi.HTTPException` (401) otherwise.
+    """
+    from .write_token import verify_write_token
+
+    token = extract_bearer_token(request)
+    if verify_write_token(state_dir, token):
+        return
+    if not require_write_token and is_localhost_request(request):
+        return
+    raise HTTPException(status_code=401, detail="unauthorized")
+
+
 __all__ = [
     "LOCALHOST_IPS",
     "extract_bearer_token",
     "is_localhost_request",
     "require_admin",
     "require_read_access",
+    "require_write_access",
 ]

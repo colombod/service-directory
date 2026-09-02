@@ -24,3 +24,19 @@ services:
 #   require_read_token: false              # true = /, /api/services, /api/health require a peer bearer token
 #   description: "Home lab tailnet node"    # optional, advertised via /api/instance-info
 #   role: "primary"                         # optional, advertised via /api/instance-info
+#   allow_private_health_targets: false     # opt in to allow a dynamic entry's
+#                                           # health_url/url to target loopback,
+#                                           # link-local, or RFC1918-private
+#                                           # addresses when polled by /api/health
+#                                           # (default false -- blocked to avoid
+#                                           # SSRF against internal services /
+#                                           # cloud metadata endpoints)
+
+# Dynamic service registry (additive, always on): agents/scripts/humans can
+# register services at runtime via POST /api/services (or the CLI
+# `register`/`deregister`/`heartbeat` commands), persisted to
+# registry.json in the state dir. Every mutation requires a write token
+# (`service-directory token issue-write`) UNLESS the request comes from
+# localhost -- set require_write_token: true below to require a token even
+# on localhost.
+#   require_write_token: false

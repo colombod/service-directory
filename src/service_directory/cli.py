@@ -53,6 +53,70 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     token_issue.add_argument("--port", type=int, default=DEFAULT_PORT)
     token_issue.add_argument("--config", default=None)
 
+    token_issue_write = token_sub.add_parser(
+        "issue-write",
+        help=(
+            "Mint (and persist, rotating any existing one) a write token "
+            "that authorizes registry mutations (register/deregister/"
+            "heartbeat). Localhost/admin only -- mints directly against the "
+            "state dir, no running server required."
+        ),
+    )
+    token_issue_write.add_argument("--config", default=None)
+
+    register = subparsers.add_parser(
+        "register", help="Register (or update) a dynamic service with the local node"
+    )
+    register.add_argument("--name", required=True, help="Service name")
+    register.add_argument("--port", type=int, default=None, help="Service port")
+    register.add_argument(
+        "--url", default=None, help="Service URL (alternative to --port)"
+    )
+    register.add_argument("--path", default=None, help="URL path (default '/')")
+    register.add_argument("--description", default=None)
+    register.add_argument("--category", default=None)
+    register.add_argument("--health-url", default=None, help="HTTP health-check URL")
+    register.add_argument(
+        "--ttl",
+        type=float,
+        default=None,
+        help="Heartbeat TTL in seconds (default: persistent)",
+    )
+    register.add_argument(
+        "--url-base",
+        default=None,
+        help="Base URL of the running local node (default: http://127.0.0.1:<port>)",
+    )
+    register.add_argument(
+        "--port-server", type=int, default=DEFAULT_PORT, dest="server_port"
+    )
+    register.add_argument(
+        "--token", default=None, help="Write token (default: localhost bypass)"
+    )
+    register.add_argument("--config", default=None)
+
+    deregister = subparsers.add_parser(
+        "deregister", help="Deregister a dynamic service from the local node"
+    )
+    deregister.add_argument("name", help="Name of the service to deregister")
+    deregister.add_argument("--url-base", default=None)
+    deregister.add_argument(
+        "--port-server", type=int, default=DEFAULT_PORT, dest="server_port"
+    )
+    deregister.add_argument("--token", default=None)
+    deregister.add_argument("--config", default=None)
+
+    heartbeat = subparsers.add_parser(
+        "heartbeat", help="Send a liveness heartbeat for a ttl dynamic service"
+    )
+    heartbeat.add_argument("name", help="Name of the service to heartbeat")
+    heartbeat.add_argument("--url-base", default=None)
+    heartbeat.add_argument(
+        "--port-server", type=int, default=DEFAULT_PORT, dest="server_port"
+    )
+    heartbeat.add_argument("--token", default=None)
+    heartbeat.add_argument("--config", default=None)
+
     pair = subparsers.add_parser(
         "pair", help="Pair with a remote peer node using a pairing code"
     )
@@ -172,6 +236,132 @@ def cmd_token_issue(args: argparse.Namespace) -> int:
         return 1
 
     print(data["code"])
+    return 0
+
+
+def cmd_token_issue_write(args: argparse.Namespace) -> int:
+    """Mint (and persist, rotating any existing one) the write token that
+    authorizes registry mutations. Localhost/admin only -- this mints
+    directly against the state dir (no running server required), matching
+    how ``write_token.py`` is meant to be operated.
+    """
+    from .write_token import issue_write_token
+
+    try:
+        config = load_config(args.config)
+    except ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    state_dir = resolve_state_dir(config)
+    token = issue_write_token(state_dir)
+    print(token)
+    return 0
+
+
+def _write_token_header(state_dir: str, explicit_token: str | None) -> dict[str, str]:
+    """Best-effort Authorization header for registry-mutation CLI commands:
+    an explicit ``--token`` wins; otherwise fall back to the token
+    persisted in the state dir (if any); otherwise no header at all,
+    relying on the localhost socket-IP bypass.
+    """
+    from .write_token import load_write_token
+
+    token = explicit_token or load_write_token(state_dir)
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+
+def cmd_register(args: argparse.Namespace) -> int:
+    """Register/update a dynamic service by calling the running local
+    node's ``POST /api/services`` endpoint."""
+    import httpx2 as httpx
+
+    try:
+        _config, state_dir, _identity, _name = _local_context(args.config)
+    except ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    base_url = args.url_base or f"http://127.0.0.1:{args.server_port}"
+    payload = {
+        "name": args.name,
+        "port": args.port,
+        "url": args.url,
+        "path": args.path,
+        "description": args.description,
+        "category": args.category,
+        "health_url": args.health_url,
+        "ttl": args.ttl,
+    }
+    headers = _write_token_header(state_dir, args.token)
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.post(
+                f"{base_url.rstrip('/')}/api/services", json=payload, headers=headers
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001 - CLI must report, never stack-trace
+        print(f"Error: registration failed ({exc})", file=sys.stderr)
+        return 1
+
+    print(f"Registered '{data['name']}'.")
+    return 0
+
+
+def cmd_deregister(args: argparse.Namespace) -> int:
+    """Deregister a dynamic service via ``DELETE /api/services/{name}``."""
+    import httpx2 as httpx
+
+    try:
+        _config, state_dir, _identity, _name = _local_context(args.config)
+    except ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    base_url = args.url_base or f"http://127.0.0.1:{args.server_port}"
+    headers = _write_token_header(state_dir, args.token)
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.delete(
+                f"{base_url.rstrip('/')}/api/services/{args.name}", headers=headers
+            )
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 - CLI must report, never stack-trace
+        print(f"Error: deregistration failed ({exc})", file=sys.stderr)
+        return 1
+
+    print(f"Deregistered '{args.name}'.")
+    return 0
+
+
+def cmd_heartbeat(args: argparse.Namespace) -> int:
+    """Send a liveness heartbeat via
+    ``POST /api/services/{name}/heartbeat``."""
+    import httpx2 as httpx
+
+    try:
+        _config, state_dir, _identity, _name = _local_context(args.config)
+    except ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    base_url = args.url_base or f"http://127.0.0.1:{args.server_port}"
+    headers = _write_token_header(state_dir, args.token)
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.post(
+                f"{base_url.rstrip('/')}/api/services/{args.name}/heartbeat",
+                headers=headers,
+            )
+            resp.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 - CLI must report, never stack-trace
+        print(f"Error: heartbeat failed ({exc})", file=sys.stderr)
+        return 1
+
+    print(f"Heartbeat sent for '{args.name}'.")
     return 0
 
 
@@ -335,6 +525,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "token" and args.token_command == "issue":
         return cmd_token_issue(args)
+    if args.command == "token" and args.token_command == "issue-write":
+        return cmd_token_issue_write(args)
+    if args.command == "register":
+        return cmd_register(args)
+    if args.command == "deregister":
+        return cmd_deregister(args)
+    if args.command == "heartbeat":
+        return cmd_heartbeat(args)
     if args.command == "pair":
         return cmd_pair(args)
     if args.command == "peers" and args.peers_command == "list":
