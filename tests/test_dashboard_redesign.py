@@ -118,13 +118,15 @@ def test_light_and_dark_mode_support(tmp_path):
     assert "color-scheme: light dark" in html
 
 
-def test_responsive_card_grid_css_present(tmp_path):
+def test_service_table_layout_present(tmp_path):
     config = _make_config(tmp_path)
     app = create_app(config, checker=_all_down)
     client = _localhost_client(app)
     html = client.get("/").text
-    assert "display: grid" in html
-    assert "repeat(auto-fill, minmax(280px" in html
+    # Services are presented as a precise, uniform table (not tiles).
+    assert 'class="svc-table"' in html
+    assert "border-collapse: collapse" in html
+    assert '<tr class="service"' in html
 
 
 def test_category_tags_and_link_buttons_present(tmp_path):

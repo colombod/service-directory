@@ -70,12 +70,10 @@ def _local_name(config: RegistryConfig) -> str:
         return "local"
 
 
-def _service_card_html(svc: dict) -> str:
+def _service_row_html(svc: dict) -> str:
     name = html_escape.escape(svc["name"])
     desc = svc.get("description") or ""
-    desc_html = ""
-    if desc:
-        desc_html = f'<p class="description">{html_escape.escape(desc)}</p>'
+    desc_html = html_escape.escape(desc)
     category_html = ""
     if svc.get("category"):
         category_html = (
@@ -86,44 +84,27 @@ def _service_card_html(svc: dict) -> str:
     tags_html = ""
     if tags:
         tags_html = (
-            '<div class="tags">'
+            '<span class="tags">'
             + "".join(f'<span class="tag">{html_escape.escape(t)}</span>' for t in tags)
-            + "</div>"
+            + "</span>"
         )
     icon_html = ""
     if svc.get("icon"):
         icon_html = f'<span class="icon">{html_escape.escape(svc["icon"])}</span>'
     owner_html = ""
     if svc.get("owner"):
-        owner_html = (
-            f'<span class="owner">owner: {html_escape.escape(svc["owner"])}</span>'
-        )
-    # Defense in depth: docs_url can arrive not just from local config
-    # (already validated in config.py) but also relayed verbatim from a
-    # federated peer's /api/services/local response (see federation.py
-    # aggregate_services), which never passes through that parser. Only
-    # ever render it as a clickable link if it's an allow-listed http(s)
-    # scheme -- otherwise drop the link but keep the rest of the card intact.
+        owner_html = f'<span class="owner">{html_escape.escape(svc["owner"])}</span>'
+    # docs_url / link URLs can be relayed verbatim from a federated peer or a
+    # dynamic registration -- only ever render as a clickable href when the
+    # scheme is an allow-listed http(s) one (drop the link, keep the row).
     docs_html = ""
     docs_url = svc.get("docs_url")
     if docs_url and is_safe_docs_url(docs_url):
-        docs_html = (
-            f'<a class="docs" href="{html_escape.escape(docs_url)}">docs &rarr;</a>'
-        )
+        docs_html = f'<a class="docs" href="{html_escape.escape(docs_url)}">docs</a>'
+    meta_html = ""
+    if owner_html or docs_html:
+        meta_html = f'<span class="meta">{owner_html}{docs_html}</span>'
     origin = svc.get("origin") or ""
-    # Defense in depth: a resolved link's URL can arrive not just from
-    # local, admin-controlled config but also from a caller-supplied
-    # dynamic registration ("url"/"port" fields, see _dynamic_service_json)
-    # or relayed verbatim from a federated peer. Apply the SAME allow-listed
-    # http(s)-scheme check used for docs_url before ever rendering a link as
-    # a clickable href -- otherwise a stored `javascript:`-scheme value
-    # would execute in the dashboard origin when clicked. Drop the
-    # individual unsafe link but keep the rest of the card intact.
-    #
-    # The FIRST safe link (tailnet-first per host_addresses order) is styled
-    # as the primary filled button; every subsequent one is a secondary
-    # outline button -- purely visual (class names only), the href/label
-    # content and ordering are untouched.
     safe_links = [link for link in svc["links"] if is_safe_docs_url(link["url"])]
     link_buttons = []
     for i, link in enumerate(safe_links):
@@ -136,61 +117,48 @@ def _service_card_html(svc: dict) -> str:
     search_blob = html_escape.escape(
         " ".join([svc["name"], desc, origin, tags_str]).lower()
     )
-    # Dynamic (agent/human-registered) entries are removable from the
-    # dashboard; static (YAML-declared) entries are read-only and show no
-    # control. The raw (un-escaped) name is embedded in a data attribute
-    # consumed only by the inline JS DELETE handler -- html.escape() still
-    # protects it from breaking out of the attribute (same XSS posture as
-    # every other data-* attribute on this card).
     remove_html = ""
     if svc.get("source") == "dynamic":
         remove_html = (
             f'<button type="button" class="remove-service" '
             f'data-remove-name="{name}" title="Remove {name}">&times;</button>'
         )
-    meta_html = ""
-    if owner_html or docs_html:
-        meta_html = f'<div class="meta">{owner_html}{docs_html}</div>'
     return (
-        f'<li class="service card" data-name="{name}" data-search="{search_blob}">'
-        f"{remove_html}"
-        f'<div class="card-top">'
-        f"{icon_html}"
-        f'<h3 class="service-name">{name}</h3>'
-        f"</div>"
-        f'<div class="card-badges">'
-        f"{category_html}"
+        f'<tr class="service" data-name="{name}" data-search="{search_blob}">'
+        f'<td class="col-name">{icon_html}<span class="service-name">{name}</span>'
+        f"{category_html}</td>"
+        f'<td class="col-desc">{desc_html}{tags_html}</td>'
+        f'<td class="col-status">'
         f'<span class="health-pill unknown" data-health-name="{name}">'
         f'<span class="health-dot" data-health-name="{name}">&#9679;</span>'
-        f'<span class="health-label">unknown</span>'
-        f"</span>"
-        f"</div>"
-        f"{desc_html}"
-        f"{tags_html}"
-        f'<div class="links">{links_html}</div>'
-        f"{meta_html}"
-        f"</li>"
+        f'<span class="health-label">unknown</span></span></td>'
+        f'<td class="col-links">{links_html}</td>'
+        f'<td class="col-meta">{meta_html}</td>'
+        f'<td class="col-actions">{remove_html}</td>'
+        f"</tr>"
     )
+
+
+# Backwards-compatible alias: the row renderer was previously named
+# _service_card_html (cards). Security tests import it by that name to assert
+# unsafe links/docs_url are dropped -- behaviour is unchanged by the table redesign.
+_service_card_html = _service_row_html
 
 
 def _render_html(services: list[dict], node_info: list[dict] | None = None) -> str:
     """Render the single self-contained dashboard page.
 
-    Services are grouped BY ORIGIN NODE (a section per node, header = node
-    name + description when known, plus a reachable badge -- every group
-    rendered here is, by construction, reachable: unreachable peers
-    contribute zero entries, see federation.aggregate_services). A plain
-    inline-JS search/filter input filters cards by name/description/tag/
-    origin. A health pill per service is rendered in a neutral "unknown"
-    state and updated client-side from /api/health -- no build step, no
-    external/CDN assets. Single self-contained page: all CSS/JS is inline.
+    Services are grouped BY ORIGIN NODE (a section per node) and presented as
+    a precise, uniform table -- no per-item tiles, no motion. A plain inline-JS
+    search filters rows by name/description/tag/origin; a health pill per row
+    is updated client-side from /api/health. Single self-contained page: all
+    CSS/JS inline, no build step, no external/CDN assets.
     """
     node_info = node_info or []
-    node_descriptions = {n["name"]: n.get("description") for n in node_info}
     node_roles = {n["name"]: n.get("role") for n in node_info}
+    node_descriptions = {n["name"]: n.get("description") for n in node_info}
 
     local_name = node_info[0]["name"] if node_info else ""
-    local_description = node_descriptions.get(local_name)
     local_role = node_roles.get(local_name)
 
     identity_bits = [
@@ -200,15 +168,8 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         identity_bits.append(
             f'<span class="node-chip-role">{html_escape.escape(local_role)}</span>'
         )
-    identity_html = "".join(identity_bits)
-    subtitle_html = ""
-    if local_description:
-        subtitle_html = (
-            '<p class="node-chip-description">'
-            f"{html_escape.escape(local_description)}</p>"
-        )
+    identity_html = " &middot; ".join(identity_bits)
 
-    # Group services by origin, preserving first-seen order of nodes.
     grouped: dict[str, list[dict]] = {}
     for svc in services:
         origin = svc.get("origin") or ""
@@ -219,22 +180,24 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         origin_name = html_escape.escape(origin) if origin else "unknown"
         desc = node_descriptions.get(origin)
         desc_html = ""
-        if desc and origin != local_name:
-            desc_html = f'<p class="node-description">{html_escape.escape(desc)}</p>'
-        cards = "\n".join(_service_card_html(svc) for svc in group)
-        # By construction every group present here came either from the
-        # local node or from a peer whose fetch already succeeded (see
-        # federation.aggregate_services -- unreachable peers contribute no
-        # entries at all), so the badge is always "reachable" for any
-        # section that actually renders.
+        if desc:
+            desc_html = (
+                f'<span class="node-description">{html_escape.escape(desc)}</span>'
+            )
+        rows = "\n".join(_service_row_html(svc) for svc in group)
+        # Every group present here is reachable by construction (unreachable
+        # peers contribute no entries -- see federation.aggregate_services).
         sections.append(
             f'<section class="node-group" data-origin="{origin_name}">'
             '<div class="node-group-header">'
             f"<h2>{origin_name}</h2>"
             '<span class="reachable-badge reachable">reachable</span>'
-            "</div>"
             f"{desc_html}"
-            f'<ul class="services card-grid">{cards}</ul>'
+            "</div>"
+            '<table class="svc-table"><thead><tr>'
+            "<th>Service</th><th>Description</th><th>Status</th>"
+            "<th>Address</th><th>Info</th><th></th>"
+            f"</tr></thead><tbody>{rows}</tbody></table>"
             f"</section>"
         )
     body = "\n".join(sections)
@@ -253,14 +216,14 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
 <script>
 (function () {
   var input = document.getElementById('service-filter');
-  var cards = document.querySelectorAll('li.service');
+  var cards = document.querySelectorAll('.service');
   var sections = document.querySelectorAll('section.node-group');
 
   function applyFilter() {
     var q = (input.value || '').toLowerCase();
     sections.forEach(function (section) {
       var visibleCount = 0;
-      section.querySelectorAll('li.service').forEach(function (card) {
+      section.querySelectorAll('.service').forEach(function (card) {
         var haystack = card.getAttribute('data-search') || '';
         var origin = section.getAttribute('data-origin') || '';
         var match = q === '' || haystack.indexOf(q) !== -1 ||
@@ -291,10 +254,7 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         if (pill) pill.className = 'health-pill ' + status;
         if (label) label.textContent = status;
       });
-    }).catch(function () {
-      // Best-effort only -- health is a progressive enhancement, never
-      // blocks rendering of the page itself.
-    });
+    }).catch(function () {});
   }
 
   updateHealth();
@@ -367,170 +327,125 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
 <style>
 :root {
   color-scheme: light dark;
-  --bg: #f3f4f6;
-  --surface: #ffffff;
-  --surface-2: #f7f8fa;
-  --border: #e4e7ec;
-  --border-strong: #d0d5dd;
-  --text: #131720;
-  --text-muted: #475467;
-  --text-faint: #667085;
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #ecebfe;
-  --accent-text: #ffffff;
-  --up: #16a34a;   --up-soft: #e6f6ec;
-  --down: #dc2626; --down-soft: #fdeaea;
-  --unknown: #98a2b3; --unknown-soft: #eef0f2;
-  --radius: 12px; --radius-sm: 8px; --radius-pill: 999px;
-  --shadow-sm: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.07);
-  --shadow-md: 0 6px 16px rgba(16,24,40,.09), 0 2px 6px rgba(16,24,40,.05);
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
-  --space-5: 24px; --space-6: 32px; --space-7: 48px;
-  --maxw: 1180px;
+  --bg: #ffffff; --panel: #ffffff; --alt: #f6f7f9;
+  --border: #e4e7ec; --border-strong: #cdd2da;
+  --text: #1b232f; --text-muted: #56606e; --text-faint: #838d9b;
+  --accent: #3355d1; --accent-weak: #eef1fb;
+  --up: #1f9d55; --up-bg: #e8f6ee; --down: #d23b3b; --down-bg: #fbeaea;
+  --unknown: #8a94a3; --unknown-bg: #eef0f3;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1016; --surface: #161a21; --surface-2: #1c212a;
-    --border: #262c37; --border-strong: #343c49;
-    --text: #e8ebf0; --text-muted: #a3adbb; --text-faint: #8a94a3;
-    --accent: #8079ff; --accent-hover: #948dff; --accent-soft: #22243a;
-    --up: #34d399; --up-soft: #10261c; --down: #f87171; --down-soft: #2a1414;
-    --unknown: #6b7280; --unknown-soft: #1f232b;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
-    --shadow-md: 0 6px 18px rgba(0,0,0,.5);
+    --bg: #0f1319; --panel: #141a22; --alt: #1a212b;
+    --border: #232b36; --border-strong: #323b48;
+    --text: #e6eaf0; --text-muted: #9aa4b2; --text-faint: #707a88;
+    --accent: #7f9cff; --accent-weak: #1b2333;
+    --up: #35c07a; --up-bg: #10251a; --down: #f06666; --down-bg: #2a1414;
+    --unknown: #6b7581; --unknown-bg: #1c232c;
   }
 }
 * { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--text); line-height: 1.5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-a { color: inherit; text-decoration: none; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
 ::placeholder { color: var(--text-faint); opacity: 1; }
-.page { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--space-5) var(--space-7); }
+.page { max-width: 1200px; margin: 0 auto; padding: 0 28px 56px; }
 
-.header-band {
-  position: sticky; top: 0; z-index: 20;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  -webkit-backdrop-filter: saturate(160%) blur(10px);
-  backdrop-filter: saturate(160%) blur(10px);
-  border-bottom: 1px solid var(--border);
-  padding: var(--space-4) var(--space-5);
-  margin: 0 calc(-1 * var(--space-5)) var(--space-6);
-}
-.header-top { display: flex; align-items: center; justify-content: space-between;
-  gap: var(--space-4); flex-wrap: wrap; }
-.brand { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em;
-  display: flex; align-items: center; gap: var(--space-3); }
-.brand::before { content: ""; width: 22px; height: 22px; border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), #a855f7);
-  box-shadow: 0 2px 8px rgba(79,70,229,.4); }
-.node-chip { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill);
-  padding: 6px 8px 6px 14px; box-shadow: var(--shadow-sm); }
-.node-chip-name { font-weight: 600; font-size: 13px; }
-.node-chip-role { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--accent); background: var(--accent-soft); padding: 3px 9px; border-radius: var(--radius-pill); }
-.node-chip-description { margin: 0; width: 100%; font-size: 12px; color: var(--text-muted); }
-.search-bar { margin-top: var(--space-4); position: relative; }
-.search-bar::before { content: ""; position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  width: 16px; height: 16px; pointer-events: none; background: var(--text-faint);
+.header-band { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 22px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+.header-top { display: contents; }
+.brand { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+.node-chip { font-size: 12.5px; color: var(--text-muted); }
+.node-chip-name { font-weight: 600; color: var(--text); }
+.node-chip-role { color: var(--accent); font-weight: 600; }
+.node-chip-description { display: none; }
+.search-bar { position: relative; margin-bottom: 26px; }
+.search-bar::before { content: ""; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; background: var(--text-faint);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E") center/contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E") center/contain no-repeat; }
-#service-filter { width: 100%; padding: 11px 14px 11px 42px; font-size: 14px; color: var(--text);
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  background: var(--surface); box-shadow: var(--shadow-sm);
-  transition: border-color .15s, box-shadow .15s; }
-#service-filter:focus { outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft); }
+#service-filter { width: 100%; padding: 9px 12px 9px 34px; font-size: 13.5px; color: var(--text);
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 7px; }
+#service-filter:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
 
-.node-group { margin-bottom: var(--space-7); }
-.node-group-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
-.node-group-header h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
-.reachable-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: var(--radius-pill);
-  display: inline-flex; align-items: center; gap: 6px; }
-.reachable-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.reachable-badge.reachable { color: var(--up); background: var(--up-soft); }
-.node-description { margin: 0 0 var(--space-4); color: var(--text-muted); font-size: 13px; }
+.node-group { margin-bottom: 28px; }
+.node-group-header { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.node-group-header h2 { margin: 0; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--text-muted); }
+.reachable-badge { font-size: 11px; font-weight: 600; color: var(--up);
+  display: inline-flex; align-items: center; gap: 5px; }
+.reachable-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.node-description { font-size: 12px; color: var(--text-faint); }
+.node-description::before { content: "\2014 "; }
 
-.card-grid { list-style: none; margin: 0; padding: 0; display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); align-items: start; }
-
-.service.card { position: relative; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: var(--space-5); box-shadow: var(--shadow-sm);
-  display: flex; flex-direction: column; gap: var(--space-3);
-  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
-.service.card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: var(--border-strong); }
-.card-top { display: flex; align-items: center; gap: var(--space-3); padding-right: 26px; }
-.icon { font-size: 20px; line-height: 1; width: 42px; height: 42px; flex: none;
-  display: grid; place-items: center; border-radius: 11px;
-  background: var(--surface-2); border: 1px solid var(--border); }
-.service-name { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; word-break: break-word; }
-.card-badges { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.category { font-size: 11px; font-weight: 600; color: var(--accent);
-  background: var(--accent-soft); border: 1px solid transparent; padding: 3px 10px; border-radius: var(--radius-pill); }
-.health-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
-  padding: 3px 10px; border-radius: var(--radius-pill); text-transform: capitalize; }
-.health-pill .health-dot { font-size: 8px; line-height: 1; }
-.health-pill.up { color: var(--up); background: var(--up-soft); }
-.health-pill.down { color: var(--down); background: var(--down-soft); }
-.health-pill.unknown { color: var(--unknown); background: var(--unknown-soft); }
-.description { margin: 0; font-size: 13px; color: var(--text-muted); }
-.tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.tag { font-size: 11px; color: var(--text-muted); background: var(--surface-2);
-  border: 1px solid var(--border); padding: 2px 9px; border-radius: var(--radius-pill); }
-.tag::before { content: "#"; opacity: .45; }
-.links { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: auto; padding-top: var(--space-2); }
-.link-btn { font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: var(--radius-sm);
-  display: inline-flex; align-items: center; gap: 6px; transition: background .15s, border-color .15s, color .15s, transform .1s; }
-.link-btn:active { transform: translateY(1px); }
-.link-btn-primary { background: var(--accent); color: var(--accent-text); box-shadow: 0 1px 2px rgba(79,70,229,.3); }
-.link-btn-primary:hover { background: var(--accent-hover); }
-.link-btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); }
-.link-btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-.meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-  margin-top: var(--space-1); padding-top: var(--space-3); border-top: 1px solid var(--border);
-  font-size: 12px; color: var(--text-faint); }
+.svc-table { width: 100%; border-collapse: collapse; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.svc-table thead th { text-align: left; font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-faint); padding: 10px 16px; background: var(--alt);
+  border-bottom: 1px solid var(--border); }
+.svc-table td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.svc-table tbody tr:last-child td { border-bottom: none; }
+.col-name { white-space: nowrap; }
+.icon { margin-right: 8px; }
+.service-name { font-weight: 600; }
+.category { margin-left: 9px; font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-weak); padding: 2px 8px; border-radius: 5px; }
+.col-desc { color: var(--text-muted); font-size: 13px; max-width: 380px; }
+.tags { margin-left: 8px; }
+.tag { font-size: 11.5px; color: var(--text-faint); margin-right: 6px; }
+.tag::before { content: "#"; opacity: .6; }
+.col-status { white-space: nowrap; }
+.health-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600;
+  padding: 3px 9px; border-radius: 5px; text-transform: capitalize; }
+.health-pill .health-dot { font-size: 7px; line-height: 1; }
+.health-pill.up { color: var(--up); background: var(--up-bg); }
+.health-pill.down { color: var(--down); background: var(--down-bg); }
+.health-pill.unknown { color: var(--unknown); background: var(--unknown-bg); }
+.col-links { white-space: nowrap; }
+.link-btn { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 5px 11px;
+  border-radius: 6px; margin-right: 6px; display: inline-block; }
+.link-btn-primary { color: #fff; background: var(--accent); }
+.link-btn-secondary { color: var(--text-muted); border: 1px solid var(--border-strong); }
+.col-meta { white-space: nowrap; }
+.meta { font-size: 12px; color: var(--text-faint); }
+.owner { margin-right: 10px; }
 .docs { color: var(--accent); font-weight: 600; }
-.docs:hover { text-decoration: underline; }
-.remove-service { position: absolute; top: 12px; right: 12px; width: 26px; height: 26px;
-  border: none; border-radius: 8px; background: transparent; color: var(--text-faint);
-  font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center;
-  transition: background .15s, color .15s; }
-.remove-service:hover { background: var(--down-soft); color: var(--down); }
+.col-actions { text-align: right; width: 40px; }
+.remove-service { border: none; background: none; color: var(--text-faint); font-size: 18px;
+  cursor: pointer; padding: 0 4px; line-height: 1; }
+.remove-service:hover { color: var(--down); }
 
-.empty-state { text-align: center; padding: var(--space-7) var(--space-4); color: var(--text-muted);
-  border: 1px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface-2); }
-.empty-state-title { font-size: 16px; font-weight: 600; color: var(--text); margin: 0 0 var(--space-2); }
+.empty-state { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 44px;
+  text-align: center; color: var(--text-muted); background: var(--alt); }
+.empty-state-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 6px; }
 .empty-state-hint { margin: 0; font-size: 13px; }
 
-.registration-panel { margin-top: var(--space-6); background: var(--surface-2);
-  border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-5); }
-.registration-panel .panel-title { margin: 0 0 var(--space-2); font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
-.registration-panel > .panel-title + .write-token-row { margin-top: var(--space-3); }
-.add-service-form h2 { display: none; }
-.write-token-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-4);
-  padding-bottom: var(--space-4); border-bottom: 1px dashed var(--border-strong); }
+.registration-panel { margin-top: 28px; padding: 20px; background: var(--alt);
+  border: 1px solid var(--border); border-radius: 10px; }
+.panel-title { margin: 0 0 14px; font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-muted); }
+.write-token-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;
+  padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .write-token-row label { font-size: 12px; color: var(--text-muted); }
-#write-token-input, .add-service-form input { width: 100%; padding: 11px 14px; font-size: 14px;
-  color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); }
+.write-token-row .hint { color: var(--text-faint); font-weight: 400; }
+#write-token-input, .add-service-form input { width: 100%; padding: 9px 12px; font-size: 13.5px;
+  color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); border-radius: 7px; }
 #write-token-input:focus, .add-service-form input:focus { outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft); }
-.add-service-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--space-3); }
-.add-service-form h2 { grid-column: 1 / -1; }
-.add-service-form button { padding: 10px 20px; font-size: 13px; font-weight: 600; border: none;
-  border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-text); cursor: pointer; transition: background .15s; }
-.add-service-form button:hover { background: var(--accent-hover); }
+  box-shadow: 0 0 0 3px var(--accent-weak); }
+.add-service-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.add-service-form h2 { display: none; }
+.add-service-form button { padding: 9px 18px; font-size: 13px; font-weight: 600; color: #fff;
+  background: var(--accent); border: none; border-radius: 7px; cursor: pointer; }
 .add-service-error { grid-column: 1 / -1; color: var(--down); font-size: 12px; min-height: 1em; }
 
-@media (max-width: 640px) {
-  .header-band { padding: var(--space-4); margin: 0 calc(-1 * var(--space-5)) var(--space-5); }
-  .card-grid { grid-template-columns: 1fr; }
+@media (max-width: 720px) {
+  .svc-table thead { display: none; }
+  .svc-table, .svc-table tbody, .svc-table tr, .svc-table td { display: block; width: 100%; }
+  .svc-table td { border-bottom: none; padding: 3px 16px; }
+  .svc-table tbody tr { border-bottom: 1px solid var(--border); padding: 12px 0; }
 }
-.write-token-row .hint { color: var(--text-faint); font-weight: 400; }
 </style>
 """
 
@@ -545,14 +460,14 @@ a { color: inherit; text-decoration: none; }
         '<header class="header-band">'
         '<div class="header-top">'
         '<h1 class="brand">Service Directory</h1>'
-        f'<div class="node-chip">{identity_html}{subtitle_html}</div>'
+        f'<div class="node-chip">{identity_html}</div>'
         "</div>"
+        "</header>"
         '<div class="search-bar">'
         '<input type="text" id="service-filter" '
         'aria-label="Filter services by name, description, tag, or origin" '
         'placeholder="Filter by name, description, tag, or origin\u2026" />'
         "</div>"
-        "</header>"
         '<main class="content">'
         f"{body}"
         f"{empty_state_html}"
@@ -560,7 +475,9 @@ a { color: inherit; text-decoration: none; }
         '<section class="registration-panel">'
         '<h2 class="panel-title">Register a service</h2>'
         '<div class="write-token-row">'
-        '<label for="write-token-input">Write token <span class="hint">(required for remote/tailnet writes, or when the node enforces one on localhost)</span></label> '
+        '<label for="write-token-input">Write token '
+        '<span class="hint">(required for remote/tailnet writes, or when the '
+        'node enforces one on localhost)</span></label> '
         '<input type="password" id="write-token-input" '
         'placeholder="Bearer write token (optional on localhost)" />'
         "</div>"
@@ -579,8 +496,6 @@ a { color: inherit; text-decoration: none; }
         f"{script}"
         "</body></html>"
     )
-
-
 def _local_services_json(config: RegistryConfig) -> list[dict]:
     """The STATIC, YAML-declared services only -- always tagged
     ``source: "static"`` so the merged catalogue can distinguish them from
