@@ -7,9 +7,15 @@ running code already IS the checkout; the user upgrades by pulling/editing
 that checkout directly.
 
 Every step is injectable (the service manager, the subprocess runner used
-for ``uv tool install --reinstall``, and the doctor-verify callable) so the
-hermetic test suite can assert step ORDERING with everything stubbed, never
+for ``uv tool install``, and the doctor-verify callable) so the hermetic
+test suite can assert step ORDERING with everything stubbed, never
 mutating a real system or shelling out for real.
+
+The reinstall step dispatches on the PEP 610 install source detected by
+``install_source.py``: a git install reinstalls from ``git+<url>@<ref>``
+(the bare package name has no PyPI entry and ``uv`` would fail to find
+it), while a pypi install reinstalls by name with ``--reinstall`` as
+before.
 """
 
 from __future__ import annotations
@@ -47,8 +53,46 @@ def reinstall_via_uv_tool(
     name: str = DEFAULT_DISTRIBUTION_NAME,
     runner: CommandRunner = default_runner,
 ) -> subprocess.CompletedProcess[str]:
-    """Real reinstall step: ``uv tool install --reinstall <name>``."""
+    """Real reinstall step: ``uv tool install --reinstall <name>``.
+
+    Only correct for a **pypi** install. Callers should prefer
+    :func:`reinstall_command_for_source` to pick the right invocation.
+    """
     return runner(["uv", "tool", "install", "--reinstall", name])
+
+
+def reinstall_command_for_source(
+    source: InstallSource, name: str = DEFAULT_DISTRIBUTION_NAME
+) -> list[str]:
+    """Build the ``uv tool install`` argv appropriate for how the running
+    package was installed (per PEP 610 detection in ``install_source.py``).
+
+    - ``git``/other VCS kinds: reinstall from the install SOURCE (the git
+      URL + ref), not the bare package name -- a private/git-only package
+      has no PyPI entry, so ``uv tool install <name>`` fails with "No
+      solution found". Uses ``--force`` (not ``--reinstall``) since the
+      argument is a full install spec, not a package name.
+    - ``pypi`` (and any other/unknown kind, as a reasonable fallback):
+      reinstall by name with ``--reinstall``, the existing behavior.
+    """
+    if source.kind == "git" and source.url:
+        spec = (
+            f"git+{source.url}@{source.commit_id}"
+            if source.commit_id
+            else f"git+{source.url}"
+        )
+        return ["uv", "tool", "install", spec, "--force"]
+    return ["uv", "tool", "install", "--reinstall", name]
+
+
+def reinstall_for_source(
+    source: InstallSource,
+    name: str = DEFAULT_DISTRIBUTION_NAME,
+    runner: CommandRunner = default_runner,
+) -> subprocess.CompletedProcess[str]:
+    """Run the reinstall command appropriate for ``source`` (see
+    :func:`reinstall_command_for_source`)."""
+    return runner(reinstall_command_for_source(source, name))
 
 
 DoctorVerifier = Callable[[], bool]
@@ -87,7 +131,7 @@ def run_upgrade(
     manager.stop()
 
     steps.append("reinstall")
-    reinstall_result = reinstall_via_uv_tool(name, runner)
+    reinstall_result = reinstall_for_source(source, name, runner)
     if reinstall_result.returncode != 0:
         return UpgradeResult(
             ok=False,
@@ -129,6 +173,8 @@ __all__ = [
     "CommandRunner",
     "UpgradeResult",
     "default_runner",
+    "reinstall_command_for_source",
+    "reinstall_for_source",
     "reinstall_via_uv_tool",
     "run_upgrade",
 ]
