@@ -1,10 +1,21 @@
 host_addresses:
   - {label: "Tailnet", host: "100.111.191.22"}   # tailnet-first (precedence)
   - {label: "LAN",     host: "192.168.1.86"}
+  # `scheme` is OPTIONAL on every host_addresses entry (allowed: "http" |
+  # "https", default "http" when omitted) -- shown here commented out on
+  # an example third address so a plain two-address config still loads
+  # and renders identically to a legacy config with no scheme at all.
+  # - {label: "Tailnet (TLS)", host: "100.111.191.22", scheme: "https"}
 services:
-  # Richer metadata fields (category, tags, icon, owner, docs_url) are ALL
-  # optional -- shown here on one entry as an example; every other entry
-  # below omits them entirely and loads identically to a legacy config.
+  # Richer metadata fields (category, tags, icon, owner, docs_url, scheme)
+  # are ALL optional -- shown here on one entry as an example; every other
+  # entry below omits them entirely and loads identically to a legacy
+  # config. `scheme` on a SERVICE is an override that wins over the host
+  # address's own scheme when a particular service needs to be reached
+  # differently (e.g. it terminates TLS itself even though other services
+  # on the same host address don't).
+  # (scheme: "https" could be added here too, e.g. `scheme: "https"`, but is
+  # left out so this shipped sample keeps resolving to plain http:// links.)
   - {name: "Resolve",              port: 8080, path: "/", description: "Amplifier Resolve dot-graph pipeline runner", category: "pipelines", tags: ["video", "editor"], icon: "🎬", owner: "amplifier-team", docs_url: "https://example.invalid/docs/resolve"}
   - {name: "Context Intelligence", port: 8000, path: "/"}
   - {name: "muxplex",              port: 8088}

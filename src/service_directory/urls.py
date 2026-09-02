@@ -30,24 +30,35 @@ class ResolvedService:
     docs_url: str | None = None
 
 
-def build_url(host: str, port: int, path: str = "/") -> str:
-    """Construct ``http://{host}:{port}{path}``, defaulting path to '/'."""
+def build_url(host: str, port: int, path: str = "/", scheme: str = "http") -> str:
+    """Construct ``{scheme}://{host}:{port}{path}``, defaulting path to '/'
+    and scheme to 'http' (fully backward-compatible when ``scheme`` is
+    omitted)."""
     if not path:
         path = "/"
     if not path.startswith("/"):
         path = "/" + path
-    return f"http://{host}:{port}{path}"
+    return f"{scheme}://{host}:{port}{path}"
 
 
 def resolve_service(
     service: Service, host_addresses: list[HostAddress]
 ) -> ResolvedService:
-    """Resolve one service against all host addresses (order preserved)."""
+    """Resolve one service against all host addresses (order preserved).
+
+    Scheme precedence per link: the service's own ``scheme`` override (when
+    set) wins over the host address's default scheme.
+    """
     links = [
         ResolvedLink(
             label=addr.label,
             host=addr.host,
-            url=build_url(addr.host, service.port, service.path),
+            url=build_url(
+                addr.host,
+                service.port,
+                service.path,
+                scheme=service.scheme or addr.scheme,
+            ),
         )
         for addr in host_addresses
     ]
