@@ -7,8 +7,12 @@ themselves.
 
 ``install`` renders the unit/plist with the CURRENT ``PATH`` environment
 variable baked in (so the service can find any tools it shells out to, the
-same way the invoking shell could) and points ``ExecStart``/``ProgramArguments``
-at the ``service-directory`` console script's ``serve`` subcommand.
+same way the invoking shell could), plus (optionally) the resolved
+``SERVICE_REGISTRY_CONFIG``/``_HOST``/``_PORT`` env vars so the installed
+service targets the right config and bind address without a manual
+drop-in, and points ``ExecStart``/``ProgramArguments`` at the
+``service-directory`` console script's ``serve`` subcommand (still with no
+extra CLI flags -- the env vars are the mechanism).
 
 Every external effect (writing unit files, invoking ``systemctl``/
 ``launchctl``) goes through injectable seams (``runner`` for subprocess,
@@ -26,11 +30,103 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from xml.sax.saxutils import escape as _xml_escape
 
 UNIT_NAME = "service-directory.service"
 LAUNCHD_LABEL = "com.service-directory.serve"
 
+# Kept in sync with cli.py's DEFAULT_HOST/DEFAULT_PORT -- duplicated here
+# (rather than imported) to avoid a service_manager -> cli import cycle.
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 80
+
+PRIVILEGED_PORT_WARNING = (
+    "Warning: port {port} is < 1024 (a privileged port). A systemd --user "
+    "unit cannot bind privileged ports without extra elevation (e.g. "
+    "CAP_NET_BIND_SERVICE or a reverse proxy). The unit has been installed "
+    "anyway; it may fail to bind at runtime."
+)
+
 CommandRunner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
+
+
+class InvalidInstallValueError(ValueError):
+    """Raised when a config/host/port value destined for the generated
+    systemd unit contains a character that would let it inject additional
+    directives.
+
+    systemd unit files are parsed line-by-line, so a value containing an
+    embedded newline (or carriage return) could smuggle in an arbitrary
+    extra directive line -- up to and including a replacement
+    ``ExecStart=`` -- which systemd would then execute on (re)start. A
+    stray double quote could break out of the surrounding
+    ``Environment="KEY=VALUE"`` quoting. Rather than silently stripping or
+    escaping such a value, we fail the install loudly so the bad input is
+    visible immediately.
+    """
+
+
+_UNSAFE_UNIT_CHARS = ("\n", "\r", '"')
+
+
+def _check_unit_safe_value(key: str, value: str) -> None:
+    """Reject a value that would inject content into a generated systemd
+    ``Environment="KEY=VALUE"`` line (newline/CR/double-quote)."""
+    if any(ch in value for ch in _UNSAFE_UNIT_CHARS):
+        raise InvalidInstallValueError(
+            f"refusing to install: {key} value contains a newline, "
+            f"carriage return, or double-quote character, which could "
+            f"inject additional systemd unit directives. Remove those "
+            f"characters and try again."
+        )
+
+
+def resolve_install_env(
+    config: str | None = None,
+    host: str | None = None,
+    port: int | str | None = None,
+) -> dict[str, str]:
+    """Resolve the ``SERVICE_REGISTRY_*`` env vars to bake into the
+    generated unit/plist: explicit argument, then the matching env var,
+    then the existing default (host/port only -- config has no default).
+
+    Returns only the keys that resolved to a non-``None`` value, so callers
+    can pass the result straight through as ``extra_env``.
+
+    Each resolved value is validated before being returned: a newline,
+    carriage return, or double quote in a config/host/port value (whether
+    it came from a CLI flag or an env var) could otherwise inject an
+    arbitrary extra directive into the generated systemd unit (up to a
+    replacement ``ExecStart=``), so such a value raises
+    :class:`InvalidInstallValueError` rather than being baked in verbatim.
+    The launchd plist renderer additionally XML-escapes every value as
+    defense in depth, covering the analogous plist-injection case.
+    """
+    resolved_config = (
+        config if config is not None else os.environ.get("SERVICE_REGISTRY_CONFIG")
+    )
+    resolved_host = (
+        host
+        if host is not None
+        else os.environ.get("SERVICE_REGISTRY_HOST", DEFAULT_HOST)
+    )
+    resolved_port = (
+        port
+        if port is not None
+        else os.environ.get("SERVICE_REGISTRY_PORT", str(DEFAULT_PORT))
+    )
+
+    env: dict[str, str] = {}
+    if resolved_config is not None:
+        _check_unit_safe_value("SERVICE_REGISTRY_CONFIG", str(resolved_config))
+        env["SERVICE_REGISTRY_CONFIG"] = str(resolved_config)
+    if resolved_host is not None:
+        _check_unit_safe_value("SERVICE_REGISTRY_HOST", str(resolved_host))
+        env["SERVICE_REGISTRY_HOST"] = str(resolved_host)
+    if resolved_port is not None:
+        _check_unit_safe_value("SERVICE_REGISTRY_PORT", str(resolved_port))
+        env["SERVICE_REGISTRY_PORT"] = str(resolved_port)
+    return env
 
 
 def default_runner(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -75,12 +171,22 @@ def render_systemd_unit(
     exec_path: str,
     path_value: str,
     description: str = "service-directory dashboard",
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     """Render a systemd ``--user`` unit file as a string (no I/O).
 
     ``ExecStart`` invokes the console script's ``serve`` subcommand;
-    ``Environment=PATH=...`` bakes in the caller's current PATH.
+    ``Environment=PATH=...`` bakes in the caller's current PATH. Any
+    ``extra_env`` entries (e.g. ``SERVICE_REGISTRY_CONFIG``/``_HOST``/
+    ``_PORT``) are rendered as additional ``Environment="KEY=VALUE"`` lines
+    so the installed unit runs with the right config/bind without any
+    manual drop-in.
     """
+    for key, value in (extra_env or {}).items():
+        _check_unit_safe_value(key, value)
+    extra_lines = "".join(
+        f'Environment="{key}={value}"\n' for key, value in (extra_env or {}).items()
+    )
     return (
         "[Unit]\n"
         f"Description={description}\n"
@@ -89,6 +195,7 @@ def render_systemd_unit(
         "[Service]\n"
         "Type=simple\n"
         f'Environment="PATH={path_value}"\n'
+        f"{extra_lines}"
         f"ExecStart={exec_path} serve\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
@@ -104,12 +211,27 @@ def render_launchd_plist(
     label: str = LAUNCHD_LABEL,
     stdout_path: str | None = None,
     stderr_path: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     """Render a launchd agent plist as a string (no I/O).
 
     ``ProgramArguments`` invokes the console script's ``serve`` subcommand;
     the ``PATH`` environment variable is baked into ``EnvironmentVariables``.
+    Any ``extra_env`` entries (e.g. ``SERVICE_REGISTRY_CONFIG``/``_HOST``/
+    ``_PORT``) are rendered as additional ``<key>/<string>`` pairs inside
+    the same ``EnvironmentVariables`` dict so the installed agent runs with
+    the right config/bind without any manual drop-in.
+
+    Every key/value is XML-escaped before interpolation: an unescaped
+    ``</string>`` or embedded ``<key>...</key>`` sequence in a value would
+    otherwise let it inject new plist keys (e.g. a replacement
+    ``ProgramArguments``) that launchd would honor.
     """
+    extra_env_lines = "".join(
+        f"        <key>{_xml_escape(key)}</key>\n"
+        f"        <string>{_xml_escape(str(value))}</string>\n"
+        for key, value in (extra_env or {}).items()
+    )
     stdout_line = (
         f"    <key>StandardOutPath</key>\n    <string>{stdout_path}</string>\n"
         if stdout_path
@@ -137,6 +259,7 @@ def render_launchd_plist(
         "    <dict>\n"
         "        <key>PATH</key>\n"
         f"        <string>{path_value}</string>\n"
+        f"{extra_env_lines}"
         "    </dict>\n"
         "    <key>RunAtLoad</key>\n"
         "    <true/>\n"
@@ -171,11 +294,24 @@ class SystemdUserServiceManager:
         return os.path.join(self.unit_dir, self.unit_name)
 
     def install(
-        self, exec_path: str | None = None, path_value: str | None = None
+        self,
+        exec_path: str | None = None,
+        path_value: str | None = None,
+        config: str | None = None,
+        host: str | None = None,
+        port: int | str | None = None,
     ) -> ServiceResult:
         exec_path = exec_path or resolve_exec_path()
         path_value = path_value if path_value is not None else current_path_env()
-        content = render_systemd_unit(exec_path, path_value)
+        extra_env = resolve_install_env(config=config, host=host, port=port)
+        resolved_port = extra_env.get("SERVICE_REGISTRY_PORT")
+        if resolved_port is not None:
+            try:
+                if int(resolved_port) < 1024:
+                    print(PRIVILEGED_PORT_WARNING.format(port=resolved_port))
+            except ValueError:
+                pass
+        content = render_systemd_unit(exec_path, path_value, extra_env=extra_env)
         os.makedirs(self.unit_dir, exist_ok=True)
         with open(self.unit_path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -283,16 +419,23 @@ class LaunchdServiceManager:
         return os.path.join(self.log_dir, "service-directory.err.log")
 
     def install(
-        self, exec_path: str | None = None, path_value: str | None = None
+        self,
+        exec_path: str | None = None,
+        path_value: str | None = None,
+        config: str | None = None,
+        host: str | None = None,
+        port: int | str | None = None,
     ) -> ServiceResult:
         exec_path = exec_path or resolve_exec_path()
         path_value = path_value if path_value is not None else current_path_env()
+        extra_env = resolve_install_env(config=config, host=host, port=port)
         content = render_launchd_plist(
             exec_path,
             path_value,
             label=self.label,
             stdout_path=self.stdout_path,
             stderr_path=self.stderr_path,
+            extra_env=extra_env,
         )
         os.makedirs(self.agent_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
@@ -380,8 +523,12 @@ def get_service_manager(
 
 
 __all__ = [
+    "DEFAULT_HOST",
+    "DEFAULT_PORT",
     "LAUNCHD_LABEL",
+    "PRIVILEGED_PORT_WARNING",
     "UNIT_NAME",
+    "InvalidInstallValueError",
     "LaunchdServiceManager",
     "ServiceManager",
     "ServiceResult",
@@ -393,4 +540,5 @@ __all__ = [
     "render_launchd_plist",
     "render_systemd_unit",
     "resolve_exec_path",
+    "resolve_install_env",
 ]

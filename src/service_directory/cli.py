@@ -94,7 +94,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     service_sub = service.add_subparsers(dest="service_command", required=True)
     for sub_name, sub_help in [
-        ("install", "Install and start the service (systemd --user / launchd)"),
         ("uninstall", "Stop and remove the service unit/agent"),
         ("start", "Start the service"),
         ("stop", "Stop the service"),
@@ -102,6 +101,35 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         ("logs", "Show recent service logs"),
     ]:
         service_sub.add_parser(sub_name, help=sub_help)
+
+    service_install = service_sub.add_parser(
+        "install", help="Install and start the service (systemd --user / launchd)"
+    )
+    service_install.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to config YAML to bake into the installed unit "
+            "(default: env SERVICE_REGISTRY_CONFIG)"
+        ),
+    )
+    service_install.add_argument(
+        "--host",
+        default=None,
+        help=(
+            "Bind host to bake into the installed unit "
+            "(default: env SERVICE_REGISTRY_HOST, then 0.0.0.0)"
+        ),
+    )
+    service_install.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help=(
+            "Bind port to bake into the installed unit "
+            "(default: env SERVICE_REGISTRY_PORT, then 80)"
+        ),
+    )
 
     subparsers.add_parser(
         "upgrade",
@@ -238,7 +266,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 def cmd_service(args: argparse.Namespace) -> int:
     """Dispatch to the systemd --user / launchd service manager."""
-    from .service_manager import UnsupportedPlatformError, get_service_manager
+    from .service_manager import (
+        InvalidInstallValueError,
+        UnsupportedPlatformError,
+        get_service_manager,
+    )
 
     try:
         manager = get_service_manager()
@@ -258,7 +290,14 @@ def cmd_service(args: argparse.Namespace) -> int:
         print(f"Unknown service command: {args.service_command}", file=sys.stderr)
         return 2
 
-    result = action()
+    if args.service_command == "install":
+        try:
+            result = manager.install(config=args.config, host=args.host, port=args.port)
+        except InvalidInstallValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+    else:
+        result = action()
     if result.output:
         print(result.output)
     print(result.message)

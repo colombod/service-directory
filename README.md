@@ -107,8 +107,12 @@ stays tailnet-first exactly as in Block 1.
 service-directory doctor           # colored checklist: python, config, port,
                                     # identity/trust-store, peers, install
                                     # source, service status -- never crashes
-service-directory service install  # systemd --user unit (Linux) / launchd
-                                    # agent (macOS); bakes current PATH in
+service-directory service install [--config PATH] [--host HOST] [--port PORT]
+                                    # systemd --user unit (Linux) / launchd
+                                    # agent (macOS); bakes current PATH plus
+                                    # SERVICE_REGISTRY_CONFIG/_HOST/_PORT in
+                                    # (falling back to env vars, then
+                                    # defaults, when flags are omitted)
 service-directory service {start,stop,status,logs,uninstall}
 service-directory upgrade          # stop -> reinstall (uv tool) -> regen
                                     # unit -> restart -> doctor verify
@@ -119,7 +123,9 @@ failure in one (e.g. an unreachable peer, a missing `systemctl`) never
 prevents the rest of the checklist from running. `upgrade` detects an
 editable install (PEP 610 `direct_url.json`) and skips with a clear
 message instead of attempting to reinstall a checkout that has nothing to
-reinstall from.
+reinstall from. A git-installed tool reinstalls from its detected
+`git+<url>@<ref>` source rather than a bare package name (which has no
+PyPI entry to resolve); a pypi install reinstalls by name as before.
 
 ## Develop / test
 
