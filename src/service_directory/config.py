@@ -128,10 +128,15 @@ class ConfigError(Exception):
     """Raised when the service registry config is missing or malformed."""
 
 
+ALLOWED_LINK_SCHEMES = {"http", "https"}
+DEFAULT_LINK_SCHEME = "http"
+
+
 @dataclass(frozen=True)
 class HostAddress:
     label: str
     host: str
+    scheme: str = DEFAULT_LINK_SCHEME
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,11 @@ class Service:
     icon: str | None = None
     owner: str | None = None
     docs_url: str | None = None
+    # Optional per-service scheme override. When set, wins over the
+    # host address's default scheme (see urls.resolve_service). ``None``
+    # means "use the host address's scheme" -- fully backward-compatible
+    # with configs that predate this field.
+    scheme: str | None = None
 
 
 @dataclass(frozen=True)
@@ -200,6 +210,25 @@ def _require_int(value: object, field_name: str, context: str) -> int:
     return value
 
 
+def _parse_optional_scheme(raw: dict, context: str) -> str | None:
+    """Parse an optional 'scheme' key, validating it's 'http'/'https'.
+
+    Returns ``None`` when the key is absent/null (caller decides the
+    default), so this same helper serves both ``HostAddress`` (default
+    ``"http"``) and ``Service`` (default ``None`` -- meaning "inherit from
+    the host address").
+    """
+    scheme = raw.get("scheme")
+    if scheme is None:
+        return None
+    if not isinstance(scheme, str) or scheme.lower() not in ALLOWED_LINK_SCHEMES:
+        raise ConfigError(
+            f"Invalid config: {context} field 'scheme' must be one of "
+            f"{sorted(ALLOWED_LINK_SCHEMES)} (got {scheme!r})"
+        )
+    return scheme.lower()
+
+
 def _parse_host_address(raw: object, index: int) -> HostAddress:
     if not isinstance(raw, dict):
         raise ConfigError(
@@ -209,7 +238,8 @@ def _parse_host_address(raw: object, index: int) -> HostAddress:
     context = f"host_addresses[{index}]"
     label = _require_str(raw.get("label"), "label", context)
     host = _require_str(raw.get("host"), "host", context)
-    return HostAddress(label=label, host=host)
+    scheme = _parse_optional_scheme(raw, context) or DEFAULT_LINK_SCHEME
+    return HostAddress(label=label, host=host, scheme=scheme)
 
 
 def _parse_service(raw: object, index: int) -> Service:
@@ -274,6 +304,7 @@ def _parse_service(raw: object, index: int) -> Service:
             f"Invalid config: {context} field 'docs_url' must use an "
             f"http(s) scheme (got {docs_url!r})"
         )
+    scheme = _parse_optional_scheme(raw, context)
     return Service(
         name=name,
         port=port,
@@ -284,6 +315,7 @@ def _parse_service(raw: object, index: int) -> Service:
         icon=icon,
         owner=owner,
         docs_url=docs_url,
+        scheme=scheme,
     )
 
 

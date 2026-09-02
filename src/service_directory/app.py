@@ -95,7 +95,9 @@ def _service_card_html(svc: dict) -> str:
         icon_html = f'<span class="icon">{html_escape.escape(svc["icon"])}</span>'
     owner_html = ""
     if svc.get("owner"):
-        owner_html = f'<span class="owner">{html_escape.escape(svc["owner"])}</span>'
+        owner_html = (
+            f'<span class="owner">owner: {html_escape.escape(svc["owner"])}</span>'
+        )
     # Defense in depth: docs_url can arrive not just from local config
     # (already validated in config.py) but also relayed verbatim from a
     # federated peer's /api/services/local response (see federation.py
@@ -105,7 +107,9 @@ def _service_card_html(svc: dict) -> str:
     docs_html = ""
     docs_url = svc.get("docs_url")
     if docs_url and is_safe_docs_url(docs_url):
-        docs_html = f'<a class="docs" href="{html_escape.escape(docs_url)}">docs</a>'
+        docs_html = (
+            f'<a class="docs" href="{html_escape.escape(docs_url)}">docs &rarr;</a>'
+        )
     origin = svc.get("origin") or ""
     # Defense in depth: a resolved link's URL can arrive not just from
     # local, admin-controlled config but also from a caller-supplied
@@ -115,11 +119,20 @@ def _service_card_html(svc: dict) -> str:
     # a clickable href -- otherwise a stored `javascript:`-scheme value
     # would execute in the dashboard origin when clicked. Drop the
     # individual unsafe link but keep the rest of the card intact.
-    links_html = "".join(
-        f'<a href="{html_escape.escape(link["url"])}">{html_escape.escape(link["label"])}</a>'
-        for link in svc["links"]
-        if is_safe_docs_url(link["url"])
-    )
+    #
+    # The FIRST safe link (tailnet-first per host_addresses order) is styled
+    # as the primary filled button; every subsequent one is a secondary
+    # outline button -- purely visual (class names only), the href/label
+    # content and ordering are untouched.
+    safe_links = [link for link in svc["links"] if is_safe_docs_url(link["url"])]
+    link_buttons = []
+    for i, link in enumerate(safe_links):
+        variant = "link-btn-primary" if i == 0 else "link-btn-secondary"
+        link_buttons.append(
+            f'<a class="link-btn {variant}" href="{html_escape.escape(link["url"])}">'
+            f"{html_escape.escape(link['label'])}</a>"
+        )
+    links_html = "".join(link_buttons)
     search_blob = html_escape.escape(
         " ".join([svc["name"], desc, origin, tags_str]).lower()
     )
@@ -135,15 +148,27 @@ def _service_card_html(svc: dict) -> str:
             f'<button type="button" class="remove-service" '
             f'data-remove-name="{name}" title="Remove {name}">&times;</button>'
         )
+    meta_html = ""
+    if owner_html or docs_html:
+        meta_html = f'<div class="meta">{owner_html}{docs_html}</div>'
     return (
-        f'<li class="service" data-name="{name}" data-search="{search_blob}">'
-        f'<span class="health-dot" data-health-name="{name}">&#9679;</span>'
-        f"{icon_html}<h3>{name}</h3>{category_html}"
+        f'<li class="service card" data-name="{name}" data-search="{search_blob}">'
         f"{remove_html}"
+        f'<div class="card-top">'
+        f"{icon_html}"
+        f'<h3 class="service-name">{name}</h3>'
+        f"</div>"
+        f'<div class="card-badges">'
+        f"{category_html}"
+        f'<span class="health-pill unknown" data-health-name="{name}">'
+        f'<span class="health-dot" data-health-name="{name}">&#9679;</span>'
+        f'<span class="health-label">unknown</span>'
+        f"</span>"
+        f"</div>"
         f"{desc_html}"
         f"{tags_html}"
-        f'<div class="meta">{owner_html}{docs_html}</div>'
         f'<div class="links">{links_html}</div>'
+        f"{meta_html}"
         f"</li>"
     )
 
@@ -152,13 +177,36 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
     """Render the single self-contained dashboard page.
 
     Services are grouped BY ORIGIN NODE (a section per node, header = node
-    name + description when known). A plain inline-JS search/filter input
-    filters cards by name/description/tag/origin. A health dot per service
-    is rendered as a placeholder and updated client-side from /api/health --
-    no build step, no external/CDN assets.
+    name + description when known, plus a reachable badge -- every group
+    rendered here is, by construction, reachable: unreachable peers
+    contribute zero entries, see federation.aggregate_services). A plain
+    inline-JS search/filter input filters cards by name/description/tag/
+    origin. A health pill per service is rendered in a neutral "unknown"
+    state and updated client-side from /api/health -- no build step, no
+    external/CDN assets. Single self-contained page: all CSS/JS is inline.
     """
     node_info = node_info or []
     node_descriptions = {n["name"]: n.get("description") for n in node_info}
+    node_roles = {n["name"]: n.get("role") for n in node_info}
+
+    local_name = node_info[0]["name"] if node_info else ""
+    local_description = node_descriptions.get(local_name)
+    local_role = node_roles.get(local_name)
+
+    identity_bits = [
+        f'<span class="node-chip-name">{html_escape.escape(local_name)}</span>'
+    ]
+    if local_role:
+        identity_bits.append(
+            f'<span class="node-chip-role">{html_escape.escape(local_role)}</span>'
+        )
+    identity_html = "".join(identity_bits)
+    subtitle_html = ""
+    if local_description:
+        subtitle_html = (
+            '<p class="node-chip-description">'
+            f"{html_escape.escape(local_description)}</p>"
+        )
 
     # Group services by origin, preserving first-seen order of nodes.
     grouped: dict[str, list[dict]] = {}
@@ -174,14 +222,32 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         if desc:
             desc_html = f'<p class="node-description">{html_escape.escape(desc)}</p>'
         cards = "\n".join(_service_card_html(svc) for svc in group)
+        # By construction every group present here came either from the
+        # local node or from a peer whose fetch already succeeded (see
+        # federation.aggregate_services -- unreachable peers contribute no
+        # entries at all), so the badge is always "reachable" for any
+        # section that actually renders.
         sections.append(
             f'<section class="node-group" data-origin="{origin_name}">'
+            '<div class="node-group-header">'
             f"<h2>{origin_name}</h2>"
+            '<span class="reachable-badge reachable">reachable</span>'
+            "</div>"
             f"{desc_html}"
-            f'<ul class="services">{cards}</ul>'
+            f'<ul class="services card-grid">{cards}</ul>'
             f"</section>"
         )
     body = "\n".join(sections)
+
+    empty_state_html = ""
+    if not services:
+        empty_state_html = (
+            '<div class="empty-state">'
+            '<p class="empty-state-title">No services registered yet</p>'
+            '<p class="empty-state-hint">Add one below, or check back once '
+            "a peer node or dynamic registration comes online.</p>"
+            "</div>"
+        )
 
     script = """
 <script>
@@ -217,9 +283,13 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
       cards.forEach(function (card) {
         var name = card.getAttribute('data-name');
         var dot = card.querySelector('.health-dot');
-        if (!dot) return;
-        var status = data[name];
-        dot.className = 'health-dot ' + (status === 'up' ? 'up' : 'down');
+        var pill = card.querySelector('.health-pill');
+        var label = card.querySelector('.health-label');
+        var raw = data[name];
+        var status = raw === 'up' ? 'up' : (raw === 'down' ? 'down' : 'unknown');
+        if (dot) dot.className = 'health-dot ' + status;
+        if (pill) pill.className = 'health-pill ' + status;
+        if (label) label.textContent = status;
       });
     }).catch(function () {
       // Best-effort only -- health is a progressive enhancement, never
@@ -295,22 +365,407 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
 
     style = """
 <style>
-.health-dot { color: #999; margin-right: 0.35em; }
-.health-dot.up { color: #2ecc71; }
-.health-dot.down { color: #e74c3c; }
-.node-group { margin-bottom: 1.5em; }
-.tag { display: inline-block; background: #eee; border-radius: 3px;
-       padding: 0 0.4em; margin-right: 0.3em; font-size: 0.85em; }
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f8;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #eceef2;
+  --fg: #1a1d23;
+  --fg-muted: #5b6270;
+  --border: #dde1e8;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --up: #16a34a;
+  --up-bg: #dcfce7;
+  --down: #dc2626;
+  --down-bg: #fee2e2;
+  --unknown: #6b7280;
+  --unknown-bg: #e5e7eb;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161b;
+    --bg-elevated: #1c1f26;
+    --bg-sunken: #101216;
+    --fg: #e6e8ec;
+    --fg-muted: #9aa1ae;
+    --border: #2c303a;
+    --accent: #3b82f6;
+    --accent-fg: #0b1220;
+    --up: #4ade80;
+    --up-bg: #0f3321;
+    --down: #f87171;
+    --down-bg: #3a1414;
+    --unknown: #9aa1ae;
+    --unknown-bg: #262a33;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+
+a { color: var(--accent); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-6) var(--space-8);
+}
+
+.header-band {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding: var(--space-6) var(--space-6) var(--space-4);
+  margin: 0 calc(-1 * var(--space-6)) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.brand {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.node-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.node-chip-name, .node-chip-role {
+  display: inline-block;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15em 0.75em;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.node-chip-description {
+  flex-basis: 100%;
+  margin: var(--space-1) 0 0;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+.search-bar input#service-filter {
+  width: 100%;
+  padding: 0.65em 1em;
+  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.node-group { margin-bottom: var(--space-8); }
+
+.node-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.node-group-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.reachable-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.1em 0.65em;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.reachable-badge.reachable { background: var(--up-bg); color: var(--up); }
+.reachable-badge.unreachable { background: var(--down-bg); color: var(--down); }
+
+.node-description {
+  margin: 0 0 var(--space-4);
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+ul.services.card-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+li.service.card {
+  position: relative;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow 0.15s ease;
+}
+li.service.card:hover { box-shadow: var(--shadow-md); }
+
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.icon { font-size: 1.4rem; line-height: 1; }
+
+.service-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.category {
+  display: inline-block;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.6em;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.health-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  border-radius: 999px;
+  padding: 0.1em 0.65em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--unknown-bg);
+  color: var(--unknown);
+}
+.health-pill.up { background: var(--up-bg); color: var(--up); }
+.health-pill.down { background: var(--down-bg); color: var(--down); }
+.health-pill.unknown { background: var(--unknown-bg); color: var(--unknown); }
+
+.health-dot { font-size: 0.6rem; color: var(--unknown); }
+.health-dot.up { color: var(--up); }
+.health-dot.down { color: var(--down); }
+
+.description {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+.tags { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.tag {
+  display: inline-block;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  padding: 0 0.5em;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.links { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: auto; }
+
+.link-btn {
+  display: inline-block;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  padding: 0.35em 0.9em;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+.link-btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.link-btn-secondary {
+  background: transparent;
+  color: var(--fg);
+}
+.link-btn-secondary:hover { background: var(--bg-sunken); }
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.remove-service {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 999px;
+  width: 1.75em;
+  height: 1.75em;
+}
+.remove-service:hover { background: var(--bg-sunken); color: var(--down); }
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-8);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--fg-muted);
+}
+.empty-state-title { font-size: 1.1rem; font-weight: 600; color: var(--fg); margin: 0 0 var(--space-2); }
+.empty-state-hint { margin: 0; }
+
+.registration-panel {
+  margin-top: var(--space-8);
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.write-token-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.write-token-row input {
+  padding: 0.4em 0.6em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg);
+}
+
+.add-service-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.add-service-form h2 {
+  flex-basis: 100%;
+  font-size: 1rem;
+  margin: 0 0 var(--space-2);
+}
+.add-service-form input {
+  padding: 0.45em 0.7em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg);
+}
+.add-service-form button {
+  padding: 0.45em 1em;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  cursor: pointer;
+}
+.add-service-error {
+  color: var(--down);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+  .page { padding: 0 var(--space-4) var(--space-6); }
+  .header-band { padding: var(--space-4); margin: 0 calc(-1 * var(--space-4)) var(--space-4); }
+}
 </style>
 """
 
     return (
         "<!DOCTYPE html>"
         '<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Service Directory</title>"
         f"{style}"
         "</head>"
-        "<body><h1>Service Directory</h1>"
+        '<body><div class="page">'
+        '<header class="header-band">'
+        '<div class="header-top">'
+        '<h1 class="brand">Service Directory</h1>'
+        f'<div class="node-chip">{identity_html}{subtitle_html}</div>'
+        "</div>"
+        '<div class="search-bar">'
+        '<input type="text" id="service-filter" '
+        'aria-label="Filter services by name, description, tag, or origin" '
+        'placeholder="Filter by name, description, tag, or origin\u2026" />'
+        "</div>"
+        "</header>"
+        '<main class="content">'
+        f"{body}"
+        f"{empty_state_html}"
+        "</main>"
+        '<section class="registration-panel">'
         '<div class="write-token-row">'
         '<label for="write-token-input">Write token '
         "(only needed for remote/tailnet mutations, or when the server "
@@ -328,9 +783,8 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         '<button type="submit">Add service</button>'
         '<span id="add-service-error" class="add-service-error"></span>'
         "</form>"
-        '<input type="text" id="service-filter" '
-        'placeholder="Filter by name, description, tag, or origin\u2026" />'
-        f"{body}"
+        "</section>"
+        "</div>"
         f"{script}"
         "</body></html>"
     )
@@ -376,7 +830,7 @@ def _dynamic_service_json(entry: DynamicService, config: RegistryConfig) -> dict
                 {
                     "label": addr.label,
                     "host": addr.host,
-                    "url": f"http://{addr.host}:{entry.port}{path}",
+                    "url": f"{addr.scheme}://{addr.host}:{entry.port}{path}",
                 }
             )
     elif entry.url:
