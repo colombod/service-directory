@@ -67,6 +67,47 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     peers_remove.add_argument("name", help="Name of the peer to remove")
     peers.add_argument("--config", default=None)
 
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Run a diagnostic checklist (config, identity, peers, install, service)",
+    )
+    doctor.add_argument("--config", default=None)
+    doctor.add_argument(
+        "--host",
+        default=os.environ.get("SERVICE_REGISTRY_HOST", DEFAULT_HOST),
+        help="Host to check bind-availability for (default: 0.0.0.0)",
+    )
+    doctor.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("SERVICE_REGISTRY_PORT", DEFAULT_PORT)),
+        help="Port to check bind-availability for (default: 80)",
+    )
+    doctor.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI color in the checklist output",
+    )
+
+    service = subparsers.add_parser(
+        "service", help="Manage the systemd --user unit / launchd agent"
+    )
+    service_sub = service.add_subparsers(dest="service_command", required=True)
+    for sub_name, sub_help in [
+        ("install", "Install and start the service (systemd --user / launchd)"),
+        ("uninstall", "Stop and remove the service unit/agent"),
+        ("start", "Start the service"),
+        ("stop", "Stop the service"),
+        ("status", "Show service status"),
+        ("logs", "Show recent service logs"),
+    ]:
+        service_sub.add_parser(sub_name, help=sub_help)
+
+    subparsers.add_parser(
+        "upgrade",
+        help="Stop, reinstall (uv tool), regenerate the unit, restart, and verify",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -183,6 +224,58 @@ def cmd_peers_remove(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Run the diagnostic checklist and print it; exit non-zero on any
+    "fail" status (warnings don't fail the exit code -- they're advisory).
+    """
+    from .doctor import DoctorDependencies, run_and_format
+
+    deps = DoctorDependencies(config_path=args.config, host=args.host, port=args.port)
+    text, all_ok = run_and_format(deps, color=not args.no_color)
+    print(text)
+    return 0 if all_ok else 1
+
+
+def cmd_service(args: argparse.Namespace) -> int:
+    """Dispatch to the systemd --user / launchd service manager."""
+    from .service_manager import UnsupportedPlatformError, get_service_manager
+
+    try:
+        manager = get_service_manager()
+    except UnsupportedPlatformError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    action = {
+        "install": manager.install,
+        "uninstall": manager.uninstall,
+        "start": manager.start,
+        "stop": manager.stop,
+        "status": manager.status,
+        "logs": manager.logs,
+    }.get(args.service_command)
+    if action is None:  # pragma: no cover - defensive; argparse restricts choices
+        print(f"Unknown service command: {args.service_command}", file=sys.stderr)
+        return 2
+
+    result = action()
+    if result.output:
+        print(result.output)
+    print(result.message)
+    return 0 if result.ok else 1
+
+
+def cmd_upgrade(args: argparse.Namespace) -> int:
+    """Stop -> reinstall (uv tool) -> regenerate unit -> restart -> verify."""
+    from .upgrade import run_upgrade
+
+    result = run_upgrade()
+    print(result.message)
+    if result.skipped:
+        return 0
+    return 0 if result.ok else 1
+
+
 def _check_bindable(host: str, port: int) -> None:
     """Raise a clear OSError-derived message if (host, port) can't be bound.
 
@@ -209,6 +302,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_peers_list(args)
     if args.command == "peers" and args.peers_command == "remove":
         return cmd_peers_remove(args)
+    if args.command == "doctor":
+        return cmd_doctor(args)
+    if args.command == "service":
+        return cmd_service(args)
+    if args.command == "upgrade":
+        return cmd_upgrade(args)
 
     if args.command != "serve":
         print(f"Unknown command: {args.command}", file=sys.stderr)
