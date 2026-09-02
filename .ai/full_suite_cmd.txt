@@ -1,0 +1,1 @@
+uv run pytest -rfE --tb=no -q -p no:cacheprovider

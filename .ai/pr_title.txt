@@ -1,0 +1,1 @@
+Add self-management: doctor, systemd/launchd service, upgrade

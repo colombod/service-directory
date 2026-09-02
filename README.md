@@ -21,8 +21,8 @@ performed locally (where Tailscale and the real services exist).
   `/api/health` + hermetic pytest). See `docs/CORE-SPEC.md`.
 - **Block 2 — Federation** (per-peer device-token auth, pairing handshake,
   pull-aggregation across peer nodes). See below.
-- Block 3 — Self-management (`doctor`, systemd/launchd service install, upgrade,
-  uv-tool packaging). *(planned)*
+- **Block 3 — Self-management** (`doctor`, systemd/launchd service install,
+  upgrade, uv-tool packaging). See below.
 
 ## Install
 
@@ -100,6 +100,26 @@ Auth model:
 
 Peer/rendered links keep preferring the tailnet address: `host_addresses`
 stays tailnet-first exactly as in Block 1.
+
+## Self-management (Block 3)
+
+```bash
+service-directory doctor           # colored checklist: python, config, port,
+                                    # identity/trust-store, peers, install
+                                    # source, service status -- never crashes
+service-directory service install  # systemd --user unit (Linux) / launchd
+                                    # agent (macOS); bakes current PATH in
+service-directory service {start,stop,status,logs,uninstall}
+service-directory upgrade          # stop -> reinstall (uv tool) -> regen
+                                    # unit -> restart -> doctor verify
+```
+
+`doctor` never crashes: every check is independently wrapped, and a
+failure in one (e.g. an unreachable peer, a missing `systemctl`) never
+prevents the rest of the checklist from running. `upgrade` detects an
+editable install (PEP 610 `direct_url.json`) and skips with a clear
+message instead of attempting to reinstall a checkout that has nothing to
+reinstall from.
 
 ## Develop / test
 
