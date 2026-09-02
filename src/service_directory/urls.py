@@ -6,7 +6,7 @@ separate so it is trivially unit-testable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .config import HostAddress, RegistryConfig, Service
 
@@ -23,6 +23,11 @@ class ResolvedService:
     name: str
     description: str | None
     links: list[ResolvedLink]
+    category: str | None = None
+    tags: list[str] = field(default_factory=list)
+    icon: str | None = None
+    owner: str | None = None
+    docs_url: str | None = None
 
 
 def build_url(host: str, port: int, path: str = "/") -> str:
@@ -47,7 +52,14 @@ def resolve_service(
         for addr in host_addresses
     ]
     return ResolvedService(
-        name=service.name, description=service.description, links=links
+        name=service.name,
+        description=service.description,
+        links=links,
+        category=service.category,
+        tags=list(service.tags),
+        icon=service.icon,
+        owner=service.owner,
+        docs_url=service.docs_url,
     )
 
 

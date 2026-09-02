@@ -2,7 +2,10 @@ host_addresses:
   - {label: "Tailnet", host: "100.111.191.22"}   # tailnet-first (precedence)
   - {label: "LAN",     host: "192.168.1.86"}
 services:
-  - {name: "Resolve",              port: 8080, path: "/", description: "Amplifier Resolve dot-graph pipeline runner"}
+  # Richer metadata fields (category, tags, icon, owner, docs_url) are ALL
+  # optional -- shown here on one entry as an example; every other entry
+  # below omits them entirely and loads identically to a legacy config.
+  - {name: "Resolve",              port: 8080, path: "/", description: "Amplifier Resolve dot-graph pipeline runner", category: "pipelines", tags: ["video", "editor"], icon: "🎬", owner: "amplifier-team", docs_url: "https://example.invalid/docs/resolve"}
   - {name: "Context Intelligence", port: 8000, path: "/"}
   - {name: "muxplex",              port: 8088}
   - {name: "muxterm",              port: 8311}
@@ -18,4 +21,6 @@ services:
 #   name: "this-node-name"                 # shown as the "origin" of local services
 #   base_url: "http://100.111.191.22:80"   # tailnet-first, advertised to peers when pairing
 #   state_dir: "/var/lib/service-directory" # default: ~/.local/state/service-directory
-#   require_read_token: false               # true = /, /api/services, /api/health require a peer bearer token
+#   require_read_token: false              # true = /, /api/services, /api/health require a peer bearer token
+#   description: "Home lab tailnet node"    # optional, advertised via /api/instance-info
+#   role: "primary"                         # optional, advertised via /api/instance-info
