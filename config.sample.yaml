@@ -7,3 +7,15 @@ services:
   - {name: "muxplex",              port: 8088}
   - {name: "muxterm",              port: 8311}
   - {name: "browser-bridge hub",   port: 8900}
+
+# Block 2 -- Federation (optional, off by default). Each node keeps ONLY its
+# own local config here; trusted peers are established via the pairing
+# handshake (`service-directory token issue` / `service-directory pair`) and
+# persisted separately to identity.json / peers.json in the state dir --
+# never listed statically in this file.
+# federation:
+#   enabled: true
+#   name: "this-node-name"                 # shown as the "origin" of local services
+#   base_url: "http://100.111.191.22:80"   # tailnet-first, advertised to peers when pairing
+#   state_dir: "/var/lib/service-directory" # default: ~/.local/state/service-directory
+#   require_read_token: false               # true = /, /api/services, /api/health require a peer bearer token
