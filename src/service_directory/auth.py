@@ -10,7 +10,8 @@ Two independent mechanisms:
   (it comes from the TCP connection itself, not a header a remote client
   could spoof), unlike e.g. ``X-Forwarded-For``.
 
-Read endpoints (``/``, ``/api/services``, ``/api/health``) are open by
+Read endpoints (``/``, ``/api/services``, ``/api/services/local``,
+``/api/health``) are open by
 default; the ``require_read_token`` config flag flips them to
 bearer-required. Admin endpoints (pairing-code issuance, peer management)
 always require either the localhost bypass or a valid peer bearer token.

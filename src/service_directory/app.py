@@ -1,5 +1,6 @@
-"""FastAPI app: GET /, GET /api/services, GET /api/health, plus Block 2
-federation endpoints (instance-info, pairing handshake).
+"""FastAPI app: GET /, GET /api/services, GET /api/services/local,
+GET /api/health, plus Block 2 federation endpoints (instance-info, pairing
+handshake).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from .auth import require_admin, require_read_access
 from .config import ConfigError, RegistryConfig, load_config, resolve_state_dir
 from .federation import (
     DEFAULT_PEER_TIMEOUT_SECONDS,
+    FEDERATION_HOP_HEADER,
     PeerFetcher,
     aggregate_services,
     default_peer_fetcher,
@@ -115,16 +117,35 @@ def create_app(
     app.state.local_name = _local_name(config)
     app.state.pairing_store = PairingCodeStore()
 
-    def _aggregated_services() -> list[dict]:
+    def _local_only_services() -> list[dict]:
+        """This node's OWN services only, tagged with the local origin.
+
+        NEVER aggregates peers -- used both for GET /api/services/local and
+        (defensively) as the fallback when a request arrives already
+        bearing the federation hop header, so a misconfigured peer fetcher
+        pointed at the aggregated endpoint still cannot trigger recursion.
+        """
         local = _local_services_json(config)
+        return [dict(svc, origin=app.state.local_name) for svc in local]
+
+    def _aggregated_services(request: Request) -> list[dict]:
+        # Defensive hop/visited guard: a request carrying the federation
+        # hop header is itself another node's peer-fetch. Even though
+        # default_peer_fetcher already targets the local-only endpoint
+        # (breaking the recursion at the root), this ensures that ANY
+        # aggregated endpoint hit with that header -- e.g. a misconfigured
+        # peer fetcher, or a future 3+ node graph -- degrades to a local-
+        # only answer instead of fanning out to further peers.
+        if request.headers.get(FEDERATION_HOP_HEADER):
+            return _local_only_services()
         if not config.federation.enabled:
             # Federation off: still tag origin so the JSON shape is stable,
             # but never attempt any peer I/O.
-            return [dict(svc, origin=app.state.local_name) for svc in local]
+            return _local_only_services()
         peers = load_peers(app.state.state_dir)
         result = aggregate_services(
             local_name=app.state.local_name,
-            local_services=local,
+            local_services=_local_services_json(config),
             peers=peers,
             fetcher=app.state.peer_fetcher,
             timeout=app.state.peer_timeout,
@@ -136,7 +157,7 @@ def create_app(
         require_read_access(
             request, app.state.state_dir, config.federation.require_read_token
         )
-        services = _aggregated_services()
+        services = _aggregated_services(request)
         return HTMLResponse(_render_html(services))
 
     @app.get("/api/services")
@@ -144,8 +165,21 @@ def create_app(
         require_read_access(
             request, app.state.state_dir, config.federation.require_read_token
         )
-        services = _aggregated_services()
+        services = _aggregated_services(request)
         return JSONResponse(services)
+
+    @app.get("/api/services/local")
+    def api_services_local(request: Request) -> JSONResponse:
+        """LOCAL-ONLY services view: this node's own services, never peers.
+
+        Same read-access rules as /api/services. This is the endpoint
+        peer-fetches target (see ``default_peer_fetcher``), so fetching a
+        peer can never itself trigger another round of peer aggregation.
+        """
+        require_read_access(
+            request, app.state.state_dir, config.federation.require_read_token
+        )
+        return JSONResponse(_local_only_services())
 
     @app.get("/api/health")
     def api_health(request: Request) -> JSONResponse:

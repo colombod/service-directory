@@ -2,9 +2,13 @@
 
 This deliberately does NOT mock the HTTP client library. It binds a real
 stdlib http.server to an ephemeral 127.0.0.1 port, serves canned
-/api/services responses, and exercises service_directory.federation's
+/api/services/local responses, and exercises service_directory.federation's
 *real* `default_peer_fetcher` (which uses the real httpx2 client) against
 it -- the only "fake" thing is the peer's process, not the transport.
+
+Note: `default_peer_fetcher` targets `/api/services/local` (the LOCAL-ONLY
+view), never the aggregated `/api/services` -- this is what prevents
+mutual-trust peer fetches from recursing into each other's aggregation.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ class _ServicesHandler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        if self.path != "/api/services":
+        if self.path != "/api/services/local":
             self.send_response(404)
             self.end_headers()
             return
