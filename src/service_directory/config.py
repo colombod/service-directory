@@ -21,10 +21,36 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import yaml
 
 DEFAULT_CONFIG_ENV_VAR = "SERVICE_REGISTRY_CONFIG"
+
+# docs_url is rendered as a clickable <a href="..."> on the dashboard (see
+# app.py::_service_card_html) and -- via federation -- may also be relayed
+# from a peer's /api/services/local response rather than only from local,
+# admin-controlled config. Restrict to a scheme allow-list so a
+# `javascript:`/`data:`/`vbscript:` URI can never be rendered as a live
+# link (stored-XSS-via-metadata). Enforced here (fail closed on bad local
+# config) AND defensively again at render time in app.py (since peer-relayed
+# values never pass through this parser).
+ALLOWED_DOCS_URL_SCHEMES = {"http", "https"}
+
+
+def is_safe_docs_url(url: str) -> bool:
+    """True iff ``url`` parses to an allow-listed scheme (http/https).
+
+    Used both to fail closed on malformed local config (see
+    :func:`_parse_service`) and defensively at render time for
+    federation-relayed service metadata that never passes through this
+    parser at all.
+    """
+    try:
+        scheme = urlparse(url).scheme.lower()
+    except ValueError:
+        return False
+    return scheme in ALLOWED_DOCS_URL_SCHEMES
 
 
 class ConfigError(Exception):
@@ -43,6 +69,11 @@ class Service:
     port: int
     path: str = "/"
     description: str | None = None
+    category: str | None = None
+    tags: list[str] = field(default_factory=list)
+    icon: str | None = None
+    owner: str | None = None
+    docs_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +91,8 @@ class FederationConfig:
     base_url: str = ""
     state_dir: str | None = None
     require_read_token: bool = False
+    description: str | None = None
+    role: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,7 +154,57 @@ def _parse_service(raw: object, index: int) -> Service:
             f"Invalid config: {context} field 'description' must be a "
             f"string (got {description!r})"
         )
-    return Service(name=name, port=port, path=path, description=description)
+    category = raw.get("category")
+    if category is not None and not isinstance(category, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'category' must be a "
+            f"string (got {category!r})"
+        )
+    tags = raw.get("tags", [])
+    if tags is None:
+        tags = []
+    if not isinstance(tags, list):
+        raise ConfigError(
+            f"Invalid config: {context} field 'tags' must be a list (got {tags!r})"
+        )
+    for i, tag in enumerate(tags):
+        if not isinstance(tag, str):
+            raise ConfigError(
+                f"Invalid config: {context} field 'tags[{i}]' must be a "
+                f"string (got {tag!r})"
+            )
+    icon = raw.get("icon")
+    if icon is not None and not isinstance(icon, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'icon' must be a string (got {icon!r})"
+        )
+    owner = raw.get("owner")
+    if owner is not None and not isinstance(owner, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'owner' must be a string (got {owner!r})"
+        )
+    docs_url = raw.get("docs_url")
+    if docs_url is not None and not isinstance(docs_url, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'docs_url' must be a "
+            f"string (got {docs_url!r})"
+        )
+    if docs_url is not None and not is_safe_docs_url(docs_url):
+        raise ConfigError(
+            f"Invalid config: {context} field 'docs_url' must use an "
+            f"http(s) scheme (got {docs_url!r})"
+        )
+    return Service(
+        name=name,
+        port=port,
+        path=path,
+        description=description,
+        category=category,
+        tags=list(tags),
+        icon=icon,
+        owner=owner,
+        docs_url=docs_url,
+    )
 
 
 def _parse_federation(raw: object) -> FederationConfig:
@@ -158,12 +241,25 @@ def _parse_federation(raw: object) -> FederationConfig:
             f"Invalid config: {context} field 'require_read_token' must be a "
             f"boolean (got {require_read_token!r})"
         )
+    description = raw.get("description")
+    if description is not None and not isinstance(description, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'description' must be a "
+            f"string (got {description!r})"
+        )
+    role = raw.get("role")
+    if role is not None and not isinstance(role, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'role' must be a string (got {role!r})"
+        )
     return FederationConfig(
         enabled=enabled,
         name=name,
         base_url=base_url,
         state_dir=state_dir,
         require_read_token=require_read_token,
+        description=description,
+        role=role,
     )
 
 
