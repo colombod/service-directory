@@ -17,7 +17,12 @@ services:
   # (scheme: "https" could be added here too, e.g. `scheme: "https"`, but is
   # left out so this shipped sample keeps resolving to plain http:// links.)
   - {name: "Resolve",              port: 8080, path: "/", description: "Amplifier Resolve dot-graph pipeline runner", category: "pipelines", tags: ["video", "editor"], icon: "🎬", owner: "amplifier-team", docs_url: "https://example.invalid/docs/resolve"}
-  - {name: "Context Intelligence", port: 8000, path: "/"}
+  # `view_url` (OPTIONAL) overrides the URL opened in the viewer pane
+  # (defaults to the primary resolved link). `view_kind` (OPTIONAL) controls
+  # how the viewer renders it: "auto" (probe/content-type decides), "iframe"
+  # (always embed), "json" (always render as formatted JSON tree). Both fields
+  # default to auto behaviour when omitted -- fully backward-compatible.
+  - {name: "Context Intelligence", port: 8000, path: "/", view_url: "http://100.111.191.22:8000/status", view_kind: "json"}
   - {name: "muxplex",              port: 8088}
   - {name: "muxterm",              port: 8311}
   - {name: "browser-bridge hub",   port: 8900}

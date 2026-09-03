@@ -19,9 +19,11 @@ import html as html_escape
 import secrets
 import socket
 import time
+import urllib.parse
+import urllib.request
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
@@ -30,6 +32,7 @@ from .config import (
     ConfigError,
     RegistryConfig,
     is_safe_docs_url,
+    is_safe_health_target,
     load_config,
     resolve_state_dir,
 )
@@ -128,8 +131,15 @@ def _service_row_html(svc: dict) -> str:
             f'<button type="button" class="remove-service" '
             f'data-remove-name="{name}" title="Remove {name}">&times;</button>'
         )
+    # Task 5: embed view_url / view_kind as data-attributes for the JS viewer.
+    # Fall back to the primary link URL when view_url is not configured.
+    primary_url = safe_links[0]["url"] if safe_links else ""
+    raw_view_url = svc.get("view_url") or primary_url
+    view_url_attr = html_escape.escape(raw_view_url) if raw_view_url else ""
+    view_kind_attr = html_escape.escape(svc.get("view_kind") or "auto")
     return (
-        f'<tr class="service" data-name="{name}" data-search="{search_blob}">'
+        f'<tr class="service" data-name="{name}" data-search="{search_blob}"'
+        f' data-view-url="{view_url_attr}" data-view-kind="{view_kind_attr}">'
         f'<td class="col-name">{icon_html}<span class="service-name">{name}</span>'
         f"{category_html}</td>"
         f'<td class="col-desc">{desc_html}{tags_html}</td>'
@@ -152,6 +162,11 @@ _service_card_html = _service_row_html
 
 def _render_html(services: list[dict], node_info: list[dict] | None = None) -> str:
     """Render the single self-contained dashboard page.
+
+    Two-pane workspace: a collapsible left sidebar listing services grouped by
+    origin node, and a right viewer pane that opens a selected service's UI
+    in-page (iframe for HTML, formatted JSON tree for JSON endpoints, graceful
+    fallback card for services that refuse framing).
 
     Services are grouped BY ORIGIN NODE (a section per node) and presented as
     a precise, uniform table -- no per-item tiles, no motion. A plain inline-JS
@@ -217,268 +232,503 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
             "</div>"
         )
 
-    script = """
-<script>
-(function () {
-  var input = document.getElementById('service-filter');
-  var cards = document.querySelectorAll('.service');
-  var sections = document.querySelectorAll('section.node-group');
+    script = (
+        "\n<script>\n"
+        "(function () {\n"
+        "  var input = document.getElementById('service-filter');\n"
+        "  var cards = document.querySelectorAll('.service');\n"
+        "  var sections = document.querySelectorAll('section.node-group');\n"
+        "\n"
+        "  function applyFilter() {\n"
+        "    var q = (input.value || '').toLowerCase();\n"
+        "    sections.forEach(function (section) {\n"
+        "      var visibleCount = 0;\n"
+        "      section.querySelectorAll('.service').forEach(function (card) {\n"
+        "        var haystack = card.getAttribute('data-search') || '';\n"
+        "        var origin = section.getAttribute('data-origin') || '';\n"
+        "        var match = q === '' || haystack.indexOf(q) !== -1 ||\n"
+        "          origin.toLowerCase().indexOf(q) !== -1;\n"
+        "        card.style.display = match ? '' : 'none';\n"
+        "        if (match) visibleCount += 1;\n"
+        "      });\n"
+        "      section.style.display = visibleCount > 0 ? '' : 'none';\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "  if (input) {\n"
+        "    input.addEventListener('input', applyFilter);\n"
+        "  }\n"
+        "\n"
+        "  function updateHealth() {\n"
+        "    fetch('/api/health').then(function (resp) {\n"
+        "      return resp.json();\n"
+        "    }).then(function (data) {\n"
+        "      cards.forEach(function (card) {\n"
+        "        var name = card.getAttribute('data-name');\n"
+        "        var dot = card.querySelector('.health-dot');\n"
+        "        var pill = card.querySelector('.health-pill');\n"
+        "        var label = card.querySelector('.health-label');\n"
+        "        var raw = data[name];\n"
+        "        var status = raw === 'up' ? 'up' : (raw === 'down' ? 'down' : 'unknown');\n"
+        "        if (dot) dot.className = 'health-dot ' + status;\n"
+        "        if (pill) pill.className = 'health-pill ' + status;\n"
+        "        if (label) label.textContent = status;\n"
+        "      });\n"
+        "    }).catch(function () {});\n"
+        "  }\n"
+        "\n"
+        "  updateHealth();\n"
+        "\n"
+        "  function tokenHeaders() {\n"
+        "    var tokenInput = document.getElementById('write-token-input');\n"
+        "    var token = tokenInput ? (tokenInput.value || '').trim() : '';\n"
+        "    var headers = {'Content-Type': 'application/json'};\n"
+        "    if (token) {\n"
+        "      headers['Authorization'] = 'Bearer ' + token;\n"
+        "    }\n"
+        "    return headers;\n"
+        "  }\n"
+        "\n"
+        "  var addForm = document.getElementById('add-service-form');\n"
+        "  var addError = document.getElementById('add-service-error');\n"
+        "  if (addForm) {\n"
+        "    addForm.addEventListener('submit', function (event) {\n"
+        "      event.preventDefault();\n"
+        "      if (addError) addError.textContent = '';\n"
+        "      var formData = new FormData(addForm);\n"
+        "      var body = {\n"
+        "        name: formData.get('name'),\n"
+        "        port: parseInt(formData.get('port'), 10),\n"
+        "        description: formData.get('description') || null,\n"
+        "        category: formData.get('category') || null,\n"
+        "        health_url: formData.get('health_url') || null\n"
+        "      };\n"
+        "      fetch('/api/services', {\n"
+        "        method: 'POST',\n"
+        "        headers: tokenHeaders(),\n"
+        "        body: JSON.stringify(body)\n"
+        "      }).then(function (resp) {\n"
+        "        if (!resp.ok) {\n"
+        "          return resp.json().catch(function () { return {}; }).then(function (data) {\n"
+        "            throw new Error((data && data.detail) || ('request failed: ' + resp.status));\n"
+        "          });\n"
+        "        }\n"
+        "        return resp.json();\n"
+        "      }).then(function () {\n"
+        "        window.location.reload();\n"
+        "      }).catch(function (err) {\n"
+        "        if (addError) addError.textContent = String(err.message || err);\n"
+        "      });\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "  document.querySelectorAll('.remove-service').forEach(function (btn) {\n"
+        "    btn.addEventListener('click', function () {\n"
+        "      var name = btn.getAttribute('data-remove-name');\n"
+        "      if (!name) return;\n"
+        "      fetch('/api/services/' + encodeURIComponent(name), {\n"
+        "        method: 'DELETE',\n"
+        "        headers: tokenHeaders()\n"
+        "      }).then(function (resp) {\n"
+        "        if (!resp.ok) {\n"
+        "          throw new Error('remove failed: ' + resp.status);\n"
+        "        }\n"
+        "        window.location.reload();\n"
+        "      }).catch(function (err) {\n"
+        "        window.alert(String(err.message || err));\n"
+        "      });\n"
+        "    });\n"
+        "  });\n"
+        "\n"
+        "  // ---- Two-pane sidebar/viewer logic (Tasks 1-4) ----\n"
+        "\n"
+        "  var sidebar = document.getElementById('sidebar');\n"
+        "  var viewer = document.getElementById('viewer');\n"
+        "  var collapseBtn = document.getElementById('sidebar-collapse-btn');\n"
+        "\n"
+        "  if (collapseBtn && sidebar) {\n"
+        "    collapseBtn.addEventListener('click', function () {\n"
+        "      var collapsed = sidebar.getAttribute('data-collapsed') === 'true';\n"
+        "      sidebar.setAttribute('data-collapsed', collapsed ? 'false' : 'true');\n"
+        "      collapseBtn.setAttribute('aria-expanded', collapsed ? 'true' : 'false');\n"
+        "      collapseBtn.title = collapsed ? 'Collapse sidebar' : 'Expand sidebar';\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "  // JSON tree renderer (Task 4) -- plain inline JS, no libraries.\n"
+        "  function renderJsonTree(obj, depth) {\n"
+        "    depth = depth || 0;\n"
+        "    if (obj === null) return '<span class=\"json-null\">null</span>';\n"
+        "    if (typeof obj === 'boolean') return '<span class=\"json-bool\">' + obj + '</span>';\n"
+        "    if (typeof obj === 'number') return '<span class=\"json-num\">' + obj + '</span>';\n"
+        "    if (typeof obj === 'string') return '<span class=\"json-str\">\"' + obj.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;') + '\"</span>';\n"
+        "    if (Array.isArray(obj)) {\n"
+        "      if (obj.length === 0) return '<span class=\"json-bracket\">[]</span>';\n"
+        "      var items = obj.map(function(v) { return '<li>' + renderJsonTree(v, depth+1) + '</li>'; }).join('');\n"
+        "      return '<details open><summary class=\"json-bracket\">[' + obj.length + ']</summary><ul class=\"json-list\">' + items + '</ul></details>';\n"
+        "    }\n"
+        "    if (typeof obj === 'object') {\n"
+        "      var keys = Object.keys(obj);\n"
+        "      if (keys.length === 0) return '<span class=\"json-bracket\">{}</span>';\n"
+        "      var entries = keys.map(function(k) {\n"
+        "        return '<li><span class=\"json-key\">' + k.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>: ' + renderJsonTree(obj[k], depth+1) + '</li>';\n"
+        "      }).join('');\n"
+        "      return '<details open><summary class=\"json-bracket\">{' + keys.length + '}</summary><ul class=\"json-list\">' + entries + '</ul></details>';\n"
+        "    }\n"
+        "    return String(obj);\n"
+        "  }\n"
+        "\n"
+        "  function showViewerDefault() {\n"
+        "    if (!viewer) return;\n"
+        "    viewer.innerHTML = '<div class=\"viewer-default\"><div id=\"viewer-catalogue\"></div></div>';\n"
+        "  }\n"
+        "\n"
+        "  function showViewerLoading(name) {\n"
+        "    if (!viewer) return;\n"
+        "    viewer.innerHTML = '<div class=\"viewer-loading\">Loading ' + name.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '\u2026</div>';\n"
+        "  }\n"
+        "\n"
+        "  function showViewerIframe(name, url) {\n"
+        "    if (!viewer) return;\n"
+        "    var safeUrl = url.replace(/&/g,'&amp;').replace(/\"/g,'&quot;');\n"
+        "    var safeName = name.replace(/&/g,'&amp;').replace(/</g,'&lt;');\n"
+        "    viewer.innerHTML =\n"
+        "      '<div class=\"viewer-header\">' +\n"
+        "      '<span class=\"viewer-svc-name\">' + safeName + '</span>' +\n"
+        "      '<a class=\"viewer-open-tab\" href=\"' + safeUrl + '\" target=\"_blank\" rel=\"noopener\">open in new tab &#8599;</a>' +\n"
+        "      '<button class=\"viewer-close-btn\" id=\"viewer-close-btn\" title=\"Back to catalogue\">&larr; back</button>' +\n"
+        "      '</div>' +\n"
+        "      '<iframe class=\"viewer-iframe\" id=\"viewer-iframe\" src=\"' + safeUrl + '\" title=\"' + safeName + '\"></iframe>';\n"
+        "    document.getElementById('viewer-close-btn').addEventListener('click', showViewerDefault);\n"
+        "  }\n"
+        "\n"
+        "  function showViewerJson(name, url, jsonData) {\n"
+        "    if (!viewer) return;\n"
+        "    var safeUrl = url.replace(/&/g,'&amp;').replace(/\"/g,'&quot;');\n"
+        "    var safeName = name.replace(/&/g,'&amp;').replace(/</g,'&lt;');\n"
+        "    viewer.innerHTML =\n"
+        "      '<div class=\"viewer-header\">' +\n"
+        "      '<span class=\"viewer-svc-name\">' + safeName + '</span>' +\n"
+        "      '<a class=\"viewer-open-tab\" href=\"' + safeUrl + '\" target=\"_blank\" rel=\"noopener\">open in new tab &#8599;</a>' +\n"
+        "      '<button class=\"viewer-close-btn\" id=\"viewer-close-btn\" title=\"Back to catalogue\">&larr; back</button>' +\n"
+        "      '</div>' +\n"
+        "      '<div class=\"viewer-json\" id=\"viewer-json-tree\"></div>';\n"
+        "    document.getElementById('viewer-json-tree').innerHTML = renderJsonTree(jsonData);\n"
+        "    document.getElementById('viewer-close-btn').addEventListener('click', showViewerDefault);\n"
+        "  }\n"
+        "\n"
+        "  function showViewerFallback(name, url, reason) {\n"
+        "    if (!viewer) return;\n"
+        "    var safeUrl = url.replace(/&/g,'&amp;').replace(/\"/g,'&quot;');\n"
+        "    var safeName = name.replace(/&/g,'&amp;').replace(/</g,'&lt;');\n"
+        "    var safeReason = (reason || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');\n"
+        "    viewer.innerHTML =\n"
+        "      '<div class=\"viewer-header\">' +\n"
+        "      '<span class=\"viewer-svc-name\">' + safeName + '</span>' +\n"
+        "      '<a class=\"viewer-open-tab\" href=\"' + safeUrl + '\" target=\"_blank\" rel=\"noopener\">open in new tab &#8599;</a>' +\n"
+        "      '<button class=\"viewer-close-btn\" id=\"viewer-close-btn\" title=\"Back to catalogue\">&larr; back</button>' +\n"
+        "      '</div>' +\n"
+        "      '<div class=\"viewer-fallback\" id=\"viewer-fallback-card\">' +\n"
+        "      '<p class=\"viewer-fallback-title\">Cannot be embedded</p>' +\n"
+        "      '<p class=\"viewer-fallback-reason\">' + (safeReason || 'This service cannot be displayed in-page.') + '</p>' +\n"
+        "      '<a class=\"viewer-fallback-link\" href=\"' + safeUrl + '\" target=\"_blank\" rel=\"noopener\">Open ' + safeName + ' in a new tab &#8599;</a>' +\n"
+        "      '</div>';\n"
+        "    document.getElementById('viewer-close-btn').addEventListener('click', showViewerDefault);\n"
+        "  }\n"
+        "\n"
+        "  function openServiceInViewer(name, url, kind) {\n"
+        "    if (!url) { showViewerDefault(); return; }\n"
+        "    if (kind === 'iframe') {\n"
+        "      showViewerIframe(name, url);\n"
+        "      return;\n"
+        "    }\n"
+        "    if (kind === 'json') {\n"
+        "      showViewerLoading(name);\n"
+        "      fetch('/api/view-proxy?url=' + encodeURIComponent(url))\n"
+        "        .then(function(r) {\n"
+        "          if (!r.ok) throw new Error('proxy error ' + r.status);\n"
+        "          return r.json();\n"
+        "        })\n"
+        "        .then(function(data) { showViewerJson(name, url, data); })\n"
+        "        .catch(function(e) { showViewerFallback(name, url, String(e.message || e)); });\n"
+        "      return;\n"
+        "    }\n"
+        "    // kind === 'auto': probe first.\n"
+        "    showViewerLoading(name);\n"
+        "    fetch('/api/embed-probe?url=' + encodeURIComponent(url))\n"
+        "      .then(function(r) { return r.json(); })\n"
+        "      .then(function(probe) {\n"
+        "        if (!probe.reachable) {\n"
+        "          showViewerFallback(name, url, 'Service is unreachable.');\n"
+        "        } else if (probe.content_type && probe.content_type.indexOf('application/json') !== -1) {\n"
+        "          // JSON content-type: use proxy renderer.\n"
+        "          return fetch('/api/view-proxy?url=' + encodeURIComponent(url))\n"
+        "            .then(function(r) {\n"
+        "              if (!r.ok) throw new Error('proxy error ' + r.status);\n"
+        "              return r.json();\n"
+        "            })\n"
+        "            .then(function(data) { showViewerJson(name, url, data); })\n"
+        "            .catch(function(e) { showViewerFallback(name, url, String(e.message || e)); });\n"
+        "        } else if (!probe.embeddable) {\n"
+        "          showViewerFallback(name, url, 'This service cannot be embedded (X-Frame-Options or CSP frame-ancestors).');\n"
+        "        } else {\n"
+        "          showViewerIframe(name, url);\n"
+        "        }\n"
+        "      })\n"
+        "      .catch(function(e) { showViewerFallback(name, url, String(e.message || e)); });\n"
+        "  }\n"
+        "\n"
+        "  // Wire up sidebar service rows as clickable.\n"
+        "  document.querySelectorAll('.service').forEach(function (row) {\n"
+        "    row.style.cursor = 'pointer';\n"
+        "    row.addEventListener('click', function (e) {\n"
+        "      // Don't intercept clicks on links/buttons inside the row.\n"
+        "      if (e.target.closest('a, button')) return;\n"
+        "      var name = row.getAttribute('data-name') || '';\n"
+        "      var url = row.getAttribute('data-view-url') || '';\n"
+        "      var kind = row.getAttribute('data-view-kind') || 'auto';\n"
+        "      openServiceInViewer(name, url, kind);\n"
+        "    });\n"
+        "  });\n"
+        "\n"
+        "})();\n"
+        "</script>\n"
+    )
 
-  function applyFilter() {
-    var q = (input.value || '').toLowerCase();
-    sections.forEach(function (section) {
-      var visibleCount = 0;
-      section.querySelectorAll('.service').forEach(function (card) {
-        var haystack = card.getAttribute('data-search') || '';
-        var origin = section.getAttribute('data-origin') || '';
-        var match = q === '' || haystack.indexOf(q) !== -1 ||
-          origin.toLowerCase().indexOf(q) !== -1;
-        card.style.display = match ? '' : 'none';
-        if (match) visibleCount += 1;
-      });
-      section.style.display = visibleCount > 0 ? '' : 'none';
-    });
-  }
-
-  if (input) {
-    input.addEventListener('input', applyFilter);
-  }
-
-  function updateHealth() {
-    fetch('/api/health').then(function (resp) {
-      return resp.json();
-    }).then(function (data) {
-      cards.forEach(function (card) {
-        var name = card.getAttribute('data-name');
-        var dot = card.querySelector('.health-dot');
-        var pill = card.querySelector('.health-pill');
-        var label = card.querySelector('.health-label');
-        var raw = data[name];
-        var status = raw === 'up' ? 'up' : (raw === 'down' ? 'down' : 'unknown');
-        if (dot) dot.className = 'health-dot ' + status;
-        if (pill) pill.className = 'health-pill ' + status;
-        if (label) label.textContent = status;
-      });
-    }).catch(function () {});
-  }
-
-  updateHealth();
-
-  function tokenHeaders() {
-    var tokenInput = document.getElementById('write-token-input');
-    var token = tokenInput ? (tokenInput.value || '').trim() : '';
-    var headers = {'Content-Type': 'application/json'};
-    if (token) {
-      headers['Authorization'] = 'Bearer ' + token;
-    }
-    return headers;
-  }
-
-  var addForm = document.getElementById('add-service-form');
-  var addError = document.getElementById('add-service-error');
-  if (addForm) {
-    addForm.addEventListener('submit', function (event) {
-      event.preventDefault();
-      if (addError) addError.textContent = '';
-      var formData = new FormData(addForm);
-      var body = {
-        name: formData.get('name'),
-        port: parseInt(formData.get('port'), 10),
-        description: formData.get('description') || null,
-        category: formData.get('category') || null,
-        health_url: formData.get('health_url') || null
-      };
-      fetch('/api/services', {
-        method: 'POST',
-        headers: tokenHeaders(),
-        body: JSON.stringify(body)
-      }).then(function (resp) {
-        if (!resp.ok) {
-          return resp.json().catch(function () { return {}; }).then(function (data) {
-            throw new Error((data && data.detail) || ('request failed: ' + resp.status));
-          });
-        }
-        return resp.json();
-      }).then(function () {
-        window.location.reload();
-      }).catch(function (err) {
-        if (addError) addError.textContent = String(err.message || err);
-      });
-    });
-  }
-
-  document.querySelectorAll('.remove-service').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var name = btn.getAttribute('data-remove-name');
-      if (!name) return;
-      fetch('/api/services/' + encodeURIComponent(name), {
-        method: 'DELETE',
-        headers: tokenHeaders()
-      }).then(function (resp) {
-        if (!resp.ok) {
-          throw new Error('remove failed: ' + resp.status);
-        }
-        window.location.reload();
-      }).catch(function (err) {
-        window.alert(String(err.message || err));
-      });
-    });
-  });
-})();
-</script>
-"""
-
-    style = """
-<style>
-:root {
-  color-scheme: light dark;
-  --bg: #ffffff; --panel: #ffffff; --alt: #f6f7f9;
-  --border: #e4e7ec; --border-strong: #cdd2da;
-  --text: #1b232f; --text-muted: #56606e; --text-faint: #838d9b;
-  --accent: #3355d1; --accent-weak: #eef1fb;
-  --up: #1f9d55; --up-bg: #e8f6ee; --down: #d23b3b; --down-bg: #fbeaea;
-  --unknown: #8a94a3; --unknown-bg: #eef0f3;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1319; --panel: #141a22; --alt: #1a212b;
-    --border: #232b36; --border-strong: #323b48;
-    --text: #e6eaf0; --text-muted: #9aa4b2; --text-faint: #707a88;
-    --accent: #7f9cff; --accent-weak: #1b2333;
-    --up: #35c07a; --up-bg: #10251a; --down: #f06666; --down-bg: #2a1414;
-    --unknown: #6b7581; --unknown-bg: #1c232c;
-  }
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-::placeholder { color: var(--text-faint); opacity: 1; }
-.page { max-width: 1200px; margin: 0 auto; padding: 0 28px 56px; }
-
-.header-band { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
-  padding: 22px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
-.header-top { display: contents; }
-.brand { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
-.node-chip { font-size: 12.5px; color: var(--text-muted); }
-.node-chip-name { font-weight: 600; color: var(--text); }
-.node-chip-role { color: var(--accent); font-weight: 600; }
-.node-chip-description { display: none; }
-.search-bar { position: relative; margin-bottom: 26px; }
-.search-bar::before { content: ""; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-  width: 15px; height: 15px; background: var(--text-faint);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E") center/contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E") center/contain no-repeat; }
-#service-filter { width: 100%; padding: 9px 12px 9px 34px; font-size: 13.5px; color: var(--text);
-  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 7px; }
-#service-filter:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
-
-.node-group { margin-bottom: 28px; }
-.node-group-header { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
-.node-group-header h2 { margin: 0; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--text-muted); }
-.reachable-badge { font-size: 11px; font-weight: 600; color: var(--up);
-  display: inline-flex; align-items: center; gap: 5px; }
-.reachable-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.node-description { font-size: 12px; color: var(--text-faint); }
-.node-description::before { content: "\2014 "; }
-
-.svc-table { width: 100%; border-collapse: collapse; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.svc-table thead th { text-align: left; font-size: 10.5px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--text-faint); padding: 10px 16px; background: var(--alt);
-  border-bottom: 1px solid var(--border); }
-.svc-table td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-.svc-table tbody tr:last-child td { border-bottom: none; }
-.col-name { white-space: nowrap; }
-.icon { margin-right: 8px; }
-.service-name { font-weight: 600; }
-.category { margin-left: 9px; font-size: 11px; font-weight: 600; color: var(--accent);
-  background: var(--accent-weak); padding: 2px 8px; border-radius: 5px; }
-.col-desc { color: var(--text-muted); font-size: 13px; max-width: 380px; }
-.tags { margin-left: 8px; }
-.tag { font-size: 11.5px; color: var(--text-faint); margin-right: 6px; }
-.tag::before { content: "#"; opacity: .6; }
-.col-status { white-space: nowrap; }
-.health-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600;
-  padding: 3px 9px; border-radius: 5px; text-transform: capitalize; }
-.health-pill .health-dot { font-size: 7px; line-height: 1; }
-.health-pill.up { color: var(--up); background: var(--up-bg); }
-.health-pill.down { color: var(--down); background: var(--down-bg); }
-.health-pill.unknown { color: var(--unknown); background: var(--unknown-bg); }
-.col-links { white-space: nowrap; }
-.link-btn { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 5px 11px;
-  border-radius: 6px; margin-right: 6px; display: inline-block; }
-.link-btn-primary { color: #fff; background: var(--accent); }
-.link-btn-secondary { color: var(--text-muted); border: 1px solid var(--border-strong); }
-.col-meta { white-space: nowrap; }
-.meta { font-size: 12px; color: var(--text-faint); }
-.owner { margin-right: 10px; }
-.docs { color: var(--accent); font-weight: 600; }
-.col-actions { text-align: right; width: 40px; }
-.remove-service { border: none; background: none; color: var(--text-faint); font-size: 18px;
-  cursor: pointer; padding: 0 4px; line-height: 1; }
-.remove-service:hover { color: var(--down); }
-
-.empty-state { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 44px;
-  text-align: center; color: var(--text-muted); background: var(--alt); }
-.empty-state-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 6px; }
-.empty-state-hint { margin: 0; font-size: 13px; }
-
-.registration-panel { margin-top: 28px; padding: 20px; background: var(--alt);
-  border: 1px solid var(--border); border-radius: 10px; }
-.panel-title { margin: 0 0 14px; font-size: 12px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--text-muted); }
-.write-token-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;
-  padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-.write-token-row label { font-size: 12px; color: var(--text-muted); }
-.write-token-row .hint { color: var(--text-faint); font-weight: 400; }
-#write-token-input, .add-service-form input { width: 100%; padding: 9px 12px; font-size: 13.5px;
-  color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); border-radius: 7px; }
-#write-token-input:focus, .add-service-form input:focus { outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-weak); }
-.add-service-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
-.add-service-form h2 { display: none; }
-.add-service-form button { padding: 9px 18px; font-size: 13px; font-weight: 600; color: #fff;
-  background: var(--accent); border: none; border-radius: 7px; cursor: pointer; }
-.add-service-error { grid-column: 1 / -1; color: var(--down); font-size: 12px; min-height: 1em; }
-
-@media (max-width: 720px) {
-  .svc-table thead { display: none; }
-  .svc-table, .svc-table tbody, .svc-table tr, .svc-table td { display: block; width: 100%; }
-  .svc-table td { border-bottom: none; padding: 3px 16px; }
-  .svc-table tbody tr { border-bottom: 1px solid var(--border); padding: 12px 0; }
-}
-</style>
-"""
+    style = (
+        "\n<style>\n"
+        ":root {\n"
+        "  color-scheme: light dark;\n"
+        "  --bg: #ffffff; --panel: #ffffff; --alt: #f6f7f9;\n"
+        "  --border: #e4e7ec; --border-strong: #cdd2da;\n"
+        "  --text: #1b232f; --text-muted: #56606e; --text-faint: #838d9b;\n"
+        "  --accent: #3355d1; --accent-weak: #eef1fb;\n"
+        "  --up: #1f9d55; --up-bg: #e8f6ee; --down: #d23b3b; --down-bg: #fbeaea;\n"
+        "  --unknown: #8a94a3; --unknown-bg: #eef0f3;\n"
+        "  --mono: ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, monospace;\n"
+        "}\n"
+        "@media (prefers-color-scheme: dark) {\n"
+        "  :root {\n"
+        "    --bg: #0f1319; --panel: #141a22; --alt: #1a212b;\n"
+        "    --border: #232b36; --border-strong: #323b48;\n"
+        "    --text: #e6eaf0; --text-muted: #9aa4b2; --text-faint: #707a88;\n"
+        "    --accent: #7f9cff; --accent-weak: #1b2333;\n"
+        "    --up: #35c07a; --up-bg: #10251a; --down: #f06666; --down-bg: #2a1414;\n"
+        "    --unknown: #6b7581; --unknown-bg: #1c232c;\n"
+        "  }\n"
+        "}\n"
+        "* { box-sizing: border-box; }\n"
+        "body { margin: 0; background: var(--bg); color: var(--text);\n"
+        "  font: 14px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;\n"
+        "  -webkit-font-smoothing: antialiased; }\n"
+        "a { color: var(--accent); text-decoration: none; }\n"
+        "::placeholder { color: var(--text-faint); opacity: 1; }\n"
+        ".page { max-width: 1400px; margin: 0 auto; padding: 0; }\n"
+        "\n"
+        ".header-band { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;\n"
+        "  padding: 22px 28px 16px; border-bottom: 1px solid var(--border); margin-bottom: 0; }\n"
+        ".header-top { display: contents; }\n"
+        ".brand { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; }\n"
+        ".node-chip { font-size: 12.5px; color: var(--text-muted); }\n"
+        ".node-chip-name { font-weight: 600; color: var(--text); }\n"
+        ".node-chip-role { color: var(--accent); font-weight: 600; }\n"
+        ".node-chip-description { display: none; }\n"
+        "\n"
+        "/* Two-pane workspace layout */\n"
+        ".workspace { display: flex; height: calc(100vh - 64px); overflow: hidden; }\n"
+        "\n"
+        "/* Sidebar */\n"
+        "#sidebar { width: 340px; min-width: 220px; max-width: 480px; flex-shrink: 0;\n"
+        "  border-right: 1px solid var(--border); display: flex; flex-direction: column;\n"
+        "  overflow: hidden; background: var(--panel); }\n"
+        "#sidebar[data-collapsed=\"true\"] { width: 0; min-width: 0; border-right: none; overflow: hidden; }\n"
+        ".sidebar-top { padding: 14px 14px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }\n"
+        ".sidebar-filter-row { display: flex; align-items: center; gap: 8px; }\n"
+        ".search-bar { position: relative; flex: 1; margin-bottom: 0; }\n"
+        ".search-bar::before { content: \"\"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%);\n"
+        "  width: 13px; height: 13px; background: var(--text-faint);\n"
+        "  -webkit-mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E\") center/contain no-repeat;\n"
+        "  mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E\") center/contain no-repeat; }\n"
+        "#service-filter { width: 100%; padding: 7px 10px 7px 28px; font-size: 13px; color: var(--text);\n"
+        "  background: var(--alt); border: 1px solid var(--border-strong); border-radius: 6px; }\n"
+        "#service-filter:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }\n"
+        "#sidebar-collapse-btn { flex-shrink: 0; border: 1px solid var(--border-strong); background: var(--alt);\n"
+        "  color: var(--text-muted); border-radius: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer;\n"
+        "  line-height: 1; }\n"
+        "#sidebar-collapse-btn:hover { color: var(--text); }\n"
+        ".sidebar-catalogue { flex: 1; overflow-y: auto; padding: 10px 0; }\n"
+        "\n"
+        "/* Viewer pane */\n"
+        "#viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }\n"
+        ".viewer-default { flex: 1; overflow-y: auto; padding: 0; }\n"
+        ".viewer-welcome { padding: 56px 32px 40px; text-align: center; border-bottom: 1px solid var(--border); }\n"
+        ".viewer-welcome-icon { width: 44px; height: 44px; margin: 0 auto 16px; border-radius: 11px;\n"
+        "  background: var(--accent-weak);\n"
+        "  -webkit-mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cpath d='M3 9h18M9 21V9'/%3E%3C/svg%3E\") center/22px no-repeat, var(--accent-weak);\n"
+        "  mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cpath d='M3 9h18M9 21V9'/%3E%3C/svg%3E\") center/22px no-repeat;\n"
+        "  background-color: var(--accent); }\n"
+        ".viewer-welcome-title { font-size: 17px; font-weight: 650; color: var(--text); margin: 0 0 8px; letter-spacing: -.01em; }\n"
+        ".viewer-welcome-hint { font-size: 13px; line-height: 1.6; color: var(--text-muted); margin: 0 auto; max-width: 440px; }\n"
+        ".viewer-loading { flex: 1; display: flex; align-items: center; justify-content: center;\n"
+        "  color: var(--text-muted); font-size: 14px; }\n"
+        ".viewer-header { display: flex; align-items: center; gap: 12px; padding: 10px 18px;\n"
+        "  border-bottom: 1px solid var(--border); background: var(--alt); flex-shrink: 0; }\n"
+        ".viewer-svc-name { font-weight: 600; font-size: 14px; flex: 1; }\n"
+        ".viewer-open-tab { font-size: 12px; color: var(--accent); }\n"
+        ".viewer-close-btn { border: 1px solid var(--border-strong); background: var(--panel);\n"
+        "  color: var(--text-muted); border-radius: 5px; padding: 4px 10px; font-size: 12px; cursor: pointer; }\n"
+        ".viewer-close-btn:hover { color: var(--text); }\n"
+        ".viewer-iframe { flex: 1; border: none; width: 100%; height: 100%; }\n"
+        ".viewer-json { flex: 1; overflow: auto; padding: 18px 24px; font-family: var(--mono); font-size: 13px; }\n"
+        ".viewer-fallback { flex: 1; display: flex; flex-direction: column; align-items: center;\n"
+        "  justify-content: center; padding: 40px; text-align: center; }\n"
+        ".viewer-fallback-title { font-size: 16px; font-weight: 600; color: var(--text); margin: 0 0 8px; }\n"
+        ".viewer-fallback-reason { color: var(--text-muted); font-size: 13px; margin: 0 0 20px; }\n"
+        ".viewer-fallback-link { font-size: 14px; font-weight: 600; color: var(--accent);\n"
+        "  border: 1px solid var(--accent); padding: 8px 18px; border-radius: 7px; }\n"
+        "\n"
+        "/* JSON tree */\n"
+        ".json-key { color: var(--accent); font-weight: 600; }\n"
+        ".json-str { color: var(--up); }\n"
+        ".json-num { color: #c07a00; }\n"
+        ".json-bool { color: #b05cc0; }\n"
+        ".json-null { color: var(--text-faint); font-style: italic; }\n"
+        ".json-bracket { color: var(--text-faint); cursor: pointer; }\n"
+        ".json-list { list-style: none; margin: 0 0 0 18px; padding: 0; }\n"
+        "details[open] > summary::before { content: \"\\25BC \"; font-size: 10px; }\n"
+        "details:not([open]) > summary::before { content: \"\\25BA \"; font-size: 10px; }\n"
+        "\n"
+        "/* Sidebar node groups and service rows */\n"
+        ".node-group { margin-bottom: 4px; }\n"
+        ".node-group-header { display: flex; align-items: center; gap: 7px; padding: 6px 14px 4px; }\n"
+        ".node-group-header h2 { margin: 0; font-size: 10.5px; font-weight: 700; text-transform: uppercase;\n"
+        "  letter-spacing: .06em; color: var(--text-muted); }\n"
+        ".reachable-badge { font-size: 10px; font-weight: 600; color: var(--up);\n"
+        "  display: inline-flex; align-items: center; gap: 4px; }\n"
+        ".reachable-badge::before { content: \"\"; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }\n"
+        ".node-description { font-size: 11px; color: var(--text-faint); }\n"
+        ".node-description::before { content: \"\\2014 \"; }\n"
+        "\n"
+        ".svc-table { width: 100%; border-collapse: collapse; }\n"
+        ".svc-table thead { display: none; }\n"
+        ".svc-table td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }\n"
+        ".svc-table tbody tr:last-child td { border-bottom: none; }\n"
+        ".svc-table tbody tr.service:hover { background: var(--accent-weak); }\n"
+        ".col-name { white-space: nowrap; }\n"
+        ".icon { margin-right: 6px; }\n"
+        ".service-name { font-weight: 600; font-size: 13px; }\n"
+        ".category { margin-left: 7px; font-size: 10px; font-weight: 600; color: var(--accent);\n"
+        "  background: var(--accent-weak); padding: 1px 6px; border-radius: 4px; }\n"
+        ".col-desc { color: var(--text-muted); font-size: 12px; max-width: 200px; }\n"
+        ".tags { margin-left: 6px; }\n"
+        ".tag { font-size: 10.5px; color: var(--text-faint); margin-right: 4px; }\n"
+        ".tag::before { content: \"#\"; opacity: .6; }\n"
+        ".col-status { white-space: nowrap; }\n"
+        ".health-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600;\n"
+        "  padding: 2px 7px; border-radius: 4px; text-transform: capitalize; }\n"
+        ".health-pill .health-dot { font-size: 6px; line-height: 1; }\n"
+        ".health-pill.up { color: var(--up); background: var(--up-bg); }\n"
+        ".health-pill.down { color: var(--down); background: var(--down-bg); }\n"
+        ".health-pill.unknown { color: var(--unknown); background: var(--unknown-bg); }\n"
+        ".col-links { white-space: nowrap; }\n"
+        ".link-btn { font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 3px 8px;\n"
+        "  border-radius: 5px; margin-right: 4px; display: inline-block; }\n"
+        ".link-btn-primary { color: #fff; background: var(--accent); }\n"
+        ".link-btn-secondary { color: var(--text-muted); border: 1px solid var(--border-strong); }\n"
+        ".col-meta { white-space: nowrap; }\n"
+        ".meta { font-size: 11px; color: var(--text-faint); }\n"
+        ".owner { margin-right: 8px; }\n"
+        ".docs { color: var(--accent); font-weight: 600; }\n"
+        ".col-actions { text-align: right; width: 32px; }\n"
+        ".remove-service { border: none; background: none; color: var(--text-faint); font-size: 16px;\n"
+        "  cursor: pointer; padding: 0 3px; line-height: 1; }\n"
+        ".remove-service:hover { color: var(--down); }\n"
+        "\n"
+        ".empty-state { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 44px;\n"
+        "  text-align: center; color: var(--text-muted); background: var(--alt); }\n"
+        ".empty-state-title { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 6px; }\n"
+        ".empty-state-hint { margin: 0; font-size: 13px; }\n"
+        "\n"
+        ".registration-panel { margin: 0; padding: 20px 28px; background: var(--alt);\n"
+        "  border-top: 1px solid var(--border); }\n"
+        ".panel-title { margin: 0; font-size: 13px; font-weight: 600;\n"
+        "  color: var(--text-muted); cursor: pointer; list-style: none;\n"
+        "  display: flex; align-items: center; gap: 7px; user-select: none; }\n"
+        ".panel-title:hover { color: var(--text); }\n"
+        ".panel-title::-webkit-details-marker { display: none; }\n"
+        ".panel-title::before { content: \"+\"; font-size: 15px; line-height: 1; color: var(--accent); }\n"
+        "details[open] > .panel-title { margin-bottom: 14px; }\n"
+        "details[open] > .panel-title::before { content: \"\\2212\"; }\n"
+        "/* Declutter the narrow sidebar: name + category + tags + status only. */\n"
+        ".sidebar-catalogue .col-desc { display: none; }\n"
+        ".write-token-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;\n"
+        "  padding-bottom: 16px; border-bottom: 1px solid var(--border); }\n"
+        ".write-token-row label { font-size: 12px; color: var(--text-muted); }\n"
+        ".write-token-row .hint { color: var(--text-faint); font-weight: 400; }\n"
+        "#write-token-input, .add-service-form input { width: 100%; padding: 9px 12px; font-size: 13.5px;\n"
+        "  color: var(--text); background: var(--panel); border: 1px solid var(--border-strong); border-radius: 7px; }\n"
+        "#write-token-input:focus, .add-service-form input:focus { outline: none; border-color: var(--accent);\n"
+        "  box-shadow: 0 0 0 3px var(--accent-weak); }\n"
+        ".add-service-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }\n"
+        ".add-service-form h2 { display: none; }\n"
+        ".add-service-form button { padding: 9px 18px; font-size: 13px; font-weight: 600; color: #fff;\n"
+        "  background: var(--accent); border: none; border-radius: 7px; cursor: pointer; }\n"
+        ".add-service-error { grid-column: 1 / -1; color: var(--down); font-size: 12px; min-height: 1em; }\n"
+        "\n"
+        "@media (max-width: 720px) {\n"
+        "  .workspace { flex-direction: column; height: auto; }\n"
+        "  #sidebar { width: 100%; max-width: 100%; border-right: none; border-bottom: 1px solid var(--border); }\n"
+        "  #sidebar[data-collapsed=\"true\"] { height: 0; overflow: hidden; }\n"
+        "  #viewer { min-height: 60vh; }\n"
+        "  .col-links { display: table-cell; }\n"
+        "}\n"
+        "</style>\n"
+    )
 
     return (
         "<!DOCTYPE html>"
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>Service Directory</title>"
-        f"{style}"
-        "</head>"
-        '<body><div class="page">'
+        + style
+        + "</head>"
+        "<body>"
+        '<div class="page">'
         '<header class="header-band">'
         '<div class="header-top">'
         '<h1 class="brand">Service Directory</h1>'
         f'<div class="node-chip">{identity_html}</div>'
         "</div>"
         "</header>"
+        '<div class="workspace">'
+        '<nav id="sidebar" data-collapsed="false">'
+        '<div class="sidebar-top">'
+        '<div class="sidebar-filter-row">'
         '<div class="search-bar">'
         '<input type="text" id="service-filter" '
         'aria-label="Filter services by name, description, tag, or origin" '
-        'placeholder="Filter by name, description, tag, or origin\u2026" />'
+        'placeholder="Filter\u2026" />'
         "</div>"
-        '<main class="content">'
-        f"{body}"
-        f"{empty_state_html}"
-        "</main>"
-        '<section class="registration-panel">'
-        '<h2 class="panel-title">Register a service</h2>'
+        '<button id="sidebar-collapse-btn" aria-expanded="true" title="Collapse sidebar">'
+        "&#xAB;"
+        "</button>"
+        "</div>"
+        "</div>"
+        '<div class="sidebar-catalogue" id="sidebar-catalogue">'
+        + body
+        + empty_state_html
+        + "</div>"
+        "</nav>"
+        '<div id="viewer">'
+        '<div class="viewer-default">'
+        '<div class="viewer-welcome">'
+        '<div class="viewer-welcome-icon"></div>'
+        '<h2 class="viewer-welcome-title">Select a service to open it here</h2>'
+        '<p class="viewer-welcome-hint">Pick a service to open it here &mdash; '
+        "without leaving the directory.</p>"
+        "</div>"
+        '<details class="registration-panel">'
+        '<summary class="panel-title">Register a service</summary>'
         '<div class="write-token-row">'
         '<label for="write-token-input">Write token '
         '<span class="hint">(required for remote/tailnet writes, or when the '
@@ -496,10 +746,13 @@ a { color: var(--accent); text-decoration: none; }
         '<button type="submit">Add service</button>'
         '<span id="add-service-error" class="add-service-error"></span>'
         "</form>"
-        "</section>"
+        "</details>"
         "</div>"
-        f"{script}"
-        "</body></html>"
+        "</div>"
+        "</div>"
+        "</div>"
+        + script
+        + "</body></html>"
     )
 def _local_services_json(config: RegistryConfig) -> list[dict]:
     """The STATIC, YAML-declared services only -- always tagged
@@ -507,6 +760,8 @@ def _local_services_json(config: RegistryConfig) -> list[dict]:
     dynamically-registered entries.
     """
     resolved = resolve_all(config)
+    # Build a lookup from name -> Service dataclass for view_url/view_kind.
+    svc_map = {s.name: s for s in config.services}
     return [
         {
             "name": svc.name,
@@ -521,6 +776,9 @@ def _local_services_json(config: RegistryConfig) -> list[dict]:
             "owner": svc.owner,
             "docs_url": svc.docs_url,
             "source": "static",
+            # Task 5: pass through optional viewer config (None when unset).
+            "view_url": svc_map[svc.name].view_url if svc.name in svc_map else None,
+            "view_kind": svc_map[svc.name].view_kind if svc.name in svc_map else None,
         }
         for svc in resolved
     ]
@@ -591,6 +849,8 @@ def create_app(
     http_checker: HttpChecker = default_http_checker,
     time_fn=time.time,
     peer_fetcher_factory=None,
+    embed_probe=None,
+    view_proxy=None,
 ) -> FastAPI:
     """Build the FastAPI app for a given (already-loaded) config.
 
@@ -601,6 +861,11 @@ def create_app(
     is the equivalent seam for HTTP ``health_url`` checks on dynamic
     registry entries. ``time_fn`` is the injectable clock seam used for
     dynamic-registry TTL/heartbeat expiry (default ``time.time``).
+    ``embed_probe`` and ``view_proxy`` are injectable seams for hermetic
+    testing of Tasks 3 and 4 -- when set, the real network I/O is bypassed.
+    ``embed_probe(url) -> dict`` returns {reachable, embeddable, content_type}.
+    ``view_proxy(url) -> dict|None`` returns the parsed JSON body or None for
+    SSRF-guarded refusals.
     """
     app = FastAPI(title="service-directory")
     app.state.config = config
@@ -613,6 +878,8 @@ def create_app(
     app.state.local_name = _local_name(config)
     app.state.pairing_store = PairingCodeStore()
     app.state.time_fn = time_fn
+    app.state.embed_probe = embed_probe
+    app.state.view_proxy = view_proxy
 
     def _static_names() -> set[str]:
         return {svc.name for svc in config.services}
@@ -629,6 +896,43 @@ def create_app(
         dynamic_entries = load_registry(app.state.state_dir, time_fn=app.state.time_fn)
         dynamic = [_dynamic_service_json(e, config) for e in dynamic_entries]
         return static + dynamic
+
+    def _target_in_catalogue(url: str) -> bool:
+        """SSRF allow-list for the embed-probe / view-proxy endpoints.
+
+        A target is allowed when its (scheme, host, port) matches a catalogue
+        entry -- either a resolved service LINK or a service's configured
+        ``view_url``. Matching by host:port (not full URL) is deliberate: a
+        service legitimately exposes several paths on the same host:port (its
+        UI at ``/``, a JSON status at ``/status``), and the admin has already
+        declared that host:port as a trusted service. An off-catalogue host or
+        port is refused, which is what the SSRF guard exists to enforce.
+        """
+
+        def _hostport(u: str):
+            try:
+                p = urllib.parse.urlparse(u)
+            except ValueError:
+                return None
+            if p.scheme not in ("http", "https") or not p.hostname:
+                return None
+            return (p.scheme, p.hostname, p.port)
+
+        target = _hostport(url)
+        if target is None:
+            return False
+        allowed: set = set()
+        for svc in _all_local_services_json():
+            for link in svc.get("links", []):
+                hp = _hostport(link.get("url", ""))
+                if hp is not None:
+                    allowed.add(hp)
+            view_url = svc.get("view_url")
+            if view_url:
+                hp = _hostport(view_url)
+                if hp is not None:
+                    allowed.add(hp)
+        return target in allowed
 
     def _local_only_services() -> list[dict]:
         """This node's OWN services only (static UNION dynamic), tagged
@@ -967,6 +1271,87 @@ def create_app(
                 "token": token,
             }
         )
+
+    @app.get("/api/embed-probe")
+    def embed_probe(url: str, request: Request) -> JSONResponse:
+        """Task 3: Probe whether a catalogue target can be embedded in an iframe.
+
+        SSRF-guarded: only targets whose host:port appear in the resolved
+        catalogue for this node are allowed. Returns:
+          { reachable: bool, embeddable: bool, content_type: str | null }
+        ``embeddable`` is True when neither X-Frame-Options nor a blocking
+        CSP frame-ancestors directive is present in the response headers.
+        """
+        require_read_access(
+            request, app.state.state_dir, config.federation.require_read_token
+        )
+        # Use the injected probe callable if provided (hermetic tests), else default.
+        if app.state.embed_probe is not None:
+            return JSONResponse(app.state.embed_probe(url))
+        # SSRF guard: only allow targets on a catalogue host:port.
+        if not _target_in_catalogue(url):
+            raise HTTPException(
+                status_code=403,
+                detail="URL not in catalogue -- SSRF guard",
+            )
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            req.add_header("User-Agent", "service-directory-embed-probe/1.0")
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                headers = resp.headers
+                ct = headers.get("Content-Type", "") or ""
+                xfo = headers.get("X-Frame-Options", "") or ""
+                csp = headers.get("Content-Security-Policy", "") or ""
+        except Exception:
+            return JSONResponse(
+                {"reachable": False, "embeddable": False, "content_type": None}
+            )
+        xfo_blocks = bool(xfo.strip())
+        csp_blocks = "frame-ancestors" in csp.lower()
+        embeddable = not xfo_blocks and not csp_blocks
+        return JSONResponse(
+            {
+                "reachable": True,
+                "embeddable": embeddable,
+                "content_type": ct.split(";")[0].strip() if ct else None,
+            }
+        )
+
+    @app.get("/api/view-proxy")
+    def view_proxy(url: str, request: Request) -> Response:
+        """Task 4: Proxy a read-only GET for a catalogue target to avoid CORS.
+
+        SSRF-guarded: only targets whose host:port appear in the resolved
+        catalogue for this node are allowed. Returns the fetched JSON body.
+        Refuses non-catalogue / unsafe targets with 403.
+        """
+        require_read_access(
+            request, app.state.state_dir, config.federation.require_read_token
+        )
+        # Use the injected proxy callable if provided (hermetic tests).
+        if app.state.view_proxy is not None:
+            result = app.state.view_proxy(url)
+            if result is None:
+                raise HTTPException(status_code=403, detail="URL not in catalogue -- SSRF guard")
+            return JSONResponse(result)
+        # SSRF guard: only allow targets on a catalogue host:port.
+        if not _target_in_catalogue(url):
+            raise HTTPException(
+                status_code=403,
+                detail="URL not in catalogue -- SSRF guard",
+            )
+        try:
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("User-Agent", "service-directory-view-proxy/1.0")
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                body = resp.read()
+                ct = resp.headers.get("Content-Type", "application/json")
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502, detail=f"upstream fetch failed: {exc}"
+            ) from exc
+        return Response(content=body, media_type="application/json")
+
 
     return app
 
