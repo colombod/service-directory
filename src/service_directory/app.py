@@ -19,6 +19,7 @@ import html as html_escape
 import secrets
 import socket
 import time
+import urllib.parse
 import urllib.request
 
 from fastapi import FastAPI, HTTPException, Request
@@ -874,6 +875,43 @@ def create_app(
         dynamic = [_dynamic_service_json(e, config) for e in dynamic_entries]
         return static + dynamic
 
+    def _target_in_catalogue(url: str) -> bool:
+        """SSRF allow-list for the embed-probe / view-proxy endpoints.
+
+        A target is allowed when its (scheme, host, port) matches a catalogue
+        entry -- either a resolved service LINK or a service's configured
+        ``view_url``. Matching by host:port (not full URL) is deliberate: a
+        service legitimately exposes several paths on the same host:port (its
+        UI at ``/``, a JSON status at ``/status``), and the admin has already
+        declared that host:port as a trusted service. An off-catalogue host or
+        port is refused, which is what the SSRF guard exists to enforce.
+        """
+
+        def _hostport(u: str):
+            try:
+                p = urllib.parse.urlparse(u)
+            except ValueError:
+                return None
+            if p.scheme not in ("http", "https") or not p.hostname:
+                return None
+            return (p.scheme, p.hostname, p.port)
+
+        target = _hostport(url)
+        if target is None:
+            return False
+        allowed: set = set()
+        for svc in _all_local_services_json():
+            for link in svc.get("links", []):
+                hp = _hostport(link.get("url", ""))
+                if hp is not None:
+                    allowed.add(hp)
+            view_url = svc.get("view_url")
+            if view_url:
+                hp = _hostport(view_url)
+                if hp is not None:
+                    allowed.add(hp)
+        return target in allowed
+
     def _local_only_services() -> list[dict]:
         """This node's OWN services only (static UNION dynamic), tagged
         with the local origin.
@@ -1228,13 +1266,8 @@ def create_app(
         # Use the injected probe callable if provided (hermetic tests), else default.
         if app.state.embed_probe is not None:
             return JSONResponse(app.state.embed_probe(url))
-        # SSRF guard: only allow catalogue targets.
-        catalogue_urls = {
-            link["url"]
-            for svc in _all_local_services_json()
-            for link in svc.get("links", [])
-        }
-        if url not in catalogue_urls:
+        # SSRF guard: only allow targets on a catalogue host:port.
+        if not _target_in_catalogue(url):
             raise HTTPException(
                 status_code=403,
                 detail="URL not in catalogue -- SSRF guard",
@@ -1279,13 +1312,8 @@ def create_app(
             if result is None:
                 raise HTTPException(status_code=403, detail="URL not in catalogue -- SSRF guard")
             return JSONResponse(result)
-        # SSRF guard: only allow catalogue targets.
-        catalogue_urls = {
-            link["url"]
-            for svc in _all_local_services_json()
-            for link in svc.get("links", [])
-        }
-        if url not in catalogue_urls:
+        # SSRF guard: only allow targets on a catalogue host:port.
+        if not _target_in_catalogue(url):
             raise HTTPException(
                 status_code=403,
                 detail="URL not in catalogue -- SSRF guard",
