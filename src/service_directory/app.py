@@ -560,7 +560,15 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "\n"
         "/* Viewer pane */\n"
         "#viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }\n"
-        ".viewer-default { flex: 1; overflow-y: auto; padding: 24px 28px 56px; }\n"
+        ".viewer-default { flex: 1; overflow-y: auto; padding: 0; }\n"
+        ".viewer-welcome { padding: 56px 32px 40px; text-align: center; border-bottom: 1px solid var(--border); }\n"
+        ".viewer-welcome-icon { width: 44px; height: 44px; margin: 0 auto 16px; border-radius: 11px;\n"
+        "  background: var(--accent-weak);\n"
+        "  -webkit-mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cpath d='M3 9h18M9 21V9'/%3E%3C/svg%3E\") center/22px no-repeat, var(--accent-weak);\n"
+        "  mask: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Cpath d='M3 9h18M9 21V9'/%3E%3C/svg%3E\") center/22px no-repeat;\n"
+        "  background-color: var(--accent); }\n"
+        ".viewer-welcome-title { font-size: 17px; font-weight: 650; color: var(--text); margin: 0 0 8px; letter-spacing: -.01em; }\n"
+        ".viewer-welcome-hint { font-size: 13px; line-height: 1.6; color: var(--text-muted); margin: 0 auto; max-width: 440px; }\n"
         ".viewer-loading { flex: 1; display: flex; align-items: center; justify-content: center;\n"
         "  color: var(--text-muted); font-size: 14px; }\n"
         ".viewer-header { display: flex; align-items: center; gap: 12px; padding: 10px 18px;\n"
@@ -643,8 +651,16 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "\n"
         ".registration-panel { margin: 0; padding: 20px 28px; background: var(--alt);\n"
         "  border-top: 1px solid var(--border); }\n"
-        ".panel-title { margin: 0 0 14px; font-size: 12px; font-weight: 700; text-transform: uppercase;\n"
-        "  letter-spacing: .05em; color: var(--text-muted); }\n"
+        ".panel-title { margin: 0; font-size: 13px; font-weight: 600;\n"
+        "  color: var(--text-muted); cursor: pointer; list-style: none;\n"
+        "  display: flex; align-items: center; gap: 7px; user-select: none; }\n"
+        ".panel-title:hover { color: var(--text); }\n"
+        ".panel-title::-webkit-details-marker { display: none; }\n"
+        ".panel-title::before { content: \"+\"; font-size: 15px; line-height: 1; color: var(--accent); }\n"
+        "details[open] > .panel-title { margin-bottom: 14px; }\n"
+        "details[open] > .panel-title::before { content: \"\\2212\"; }\n"
+        "/* Declutter the narrow sidebar: name + category + tags + status only. */\n"
+        ".sidebar-catalogue .col-desc { display: none; }\n"
         ".write-token-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;\n"
         "  padding-bottom: 16px; border-bottom: 1px solid var(--border); }\n"
         ".write-token-row label { font-size: 12px; color: var(--text-muted); }\n"
@@ -694,7 +710,7 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         'placeholder="Filter\u2026" />'
         "</div>"
         '<button id="sidebar-collapse-btn" aria-expanded="true" title="Collapse sidebar">'
-        "&#x2190;"
+        "&#xAB;"
         "</button>"
         "</div>"
         "</div>"
@@ -705,8 +721,14 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "</nav>"
         '<div id="viewer">'
         '<div class="viewer-default">'
-        '<section class="registration-panel">'
-        '<h2 class="panel-title">Register a service</h2>'
+        '<div class="viewer-welcome">'
+        '<div class="viewer-welcome-icon"></div>'
+        '<h2 class="viewer-welcome-title">Select a service to open it here</h2>'
+        '<p class="viewer-welcome-hint">Pick a service to open it here &mdash; '
+        "without leaving the directory.</p>"
+        "</div>"
+        '<details class="registration-panel">'
+        '<summary class="panel-title">Register a service</summary>'
         '<div class="write-token-row">'
         '<label for="write-token-input">Write token '
         '<span class="hint">(required for remote/tailnet writes, or when the '
@@ -724,7 +746,7 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         '<button type="submit">Add service</button>'
         '<span id="add-service-error" class="add-service-error"></span>'
         "</form>"
-        "</section>"
+        "</details>"
         "</div>"
         "</div>"
         "</div>"
