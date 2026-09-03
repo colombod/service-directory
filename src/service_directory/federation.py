@@ -47,9 +47,22 @@ DEFAULT_PEER_TIMEOUT_SECONDS = 1.0
 # never recurse regardless of which endpoint gets called.
 FEDERATION_HOP_HEADER = "x-sd-federation-hop"
 
+# Transitive-aggregation carriers. A node that fetches a peer's AGGREGATED
+# view sends the set of node identities already traversed (comma-separated)
+# plus the remaining hop budget. The receiving node excludes any peer already
+# in ``visited`` and decrements the budget, so a CONNECTED graph aggregates
+# fully while a cycle can never form (visited-set) and depth is bounded (ttl).
+FEDERATION_VISITED_HEADER = "x-sd-federation-visited"
+FEDERATION_TTL_HEADER = "x-sd-federation-ttl"
+
+# Default hop budget for a top-level (user-facing) /api/services request.
+# Bounds the transitive walk's depth (and thus worst-case latency) regardless
+# of federation size; 5 comfortably covers any realistic personal federation.
+DEFAULT_MAX_HOPS = 5
+
 # A fetcher takes (peer, timeout_seconds) and returns the peer's parsed
-# local-services JSON body (a list of service dicts) on success, or raises
-# on any failure (timeout, connection error, non-2xx, bad JSON). Production
+# services JSON body (a list of service dicts) on success, or raises on any
+# failure (timeout, connection error, non-2xx, bad JSON). Production
 # implements this with a real HTTP client; tests inject a stub/fake.
 PeerFetcher = Callable[[PeerRecord, float], list[dict]]
 
@@ -81,6 +94,59 @@ def default_peer_fetcher(peer: PeerRecord, timeout: float) -> list[dict]:
             f"peer {peer.name!r} returned non-list /api/services/local body"
         )
     return data
+
+
+def make_default_transitive_fetcher(visited: frozenset[str], ttl: int) -> PeerFetcher:
+    """Build a real-HTTP peer fetcher for the TRANSITIVE path.
+
+    Unlike ``default_peer_fetcher`` (which targets ``/api/services/local`` and
+    therefore never causes the peer to aggregate further), this targets the
+    peer's AGGREGATED ``/api/services`` and passes the current ``visited`` set
+    and remaining ``ttl`` in headers. The receiving node excludes peers already
+    in ``visited`` and decrements ``ttl`` -- so the graph is walked transitively
+    while remaining loop-safe (a node already in ``visited``, or ttl<=0, answers
+    local-only and stops the walk). The returned callable has the standard
+    ``(peer, timeout)`` PeerFetcher signature; ``visited``/``ttl`` are captured.
+    """
+
+    def _fetch(peer: PeerRecord, timeout: float) -> list[dict]:
+        import httpx2 as httpx
+
+        url = peer.base_url.rstrip("/") + "/api/services"
+        headers = {
+            "Authorization": f"Bearer {peer.token}",
+            FEDERATION_HOP_HEADER: "1",
+            FEDERATION_VISITED_HEADER: ",".join(sorted(visited)),
+            FEDERATION_TTL_HEADER: str(ttl),
+        }
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        if not isinstance(data, list):
+            raise TypeError(f"peer {peer.name!r} returned non-list /api/services body")
+        return data
+
+    return _fetch
+
+
+def dedupe_services(services: list[dict]) -> list[dict]:
+    """Collapse duplicate entries by (origin, name).
+
+    A service reachable via more than one path through the federation graph
+    would otherwise appear once per path. First occurrence wins (its origin
+    tag is the true owner, preserved by ``_tag_origin``). Order is otherwise
+    stable.
+    """
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for svc in services:
+        key = (svc.get("origin") or "", svc.get("name") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(svc)
+    return out
 
 
 @dataclass(frozen=True)
@@ -155,10 +221,15 @@ def aggregate_services(
 
 
 __all__ = [
+    "DEFAULT_MAX_HOPS",
     "DEFAULT_PEER_TIMEOUT_SECONDS",
     "FEDERATION_HOP_HEADER",
+    "FEDERATION_TTL_HEADER",
+    "FEDERATION_VISITED_HEADER",
     "AggregationResult",
     "PeerFetcher",
     "aggregate_services",
+    "dedupe_services",
     "default_peer_fetcher",
+    "make_default_transitive_fetcher",
 ]

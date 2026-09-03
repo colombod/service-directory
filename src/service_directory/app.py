@@ -34,12 +34,17 @@ from .config import (
     resolve_state_dir,
 )
 from .federation import (
+    DEFAULT_MAX_HOPS,
     DEFAULT_PEER_TIMEOUT_SECONDS,
     FEDERATION_HOP_HEADER,
+    FEDERATION_TTL_HEADER,
+    FEDERATION_VISITED_HEADER,
     AggregationResult,
     PeerFetcher,
     aggregate_services,
+    dedupe_services,
     default_peer_fetcher,
+    make_default_transitive_fetcher,
 )
 from .health import (
     Checker,
@@ -585,6 +590,7 @@ def create_app(
     peer_timeout: float = DEFAULT_PEER_TIMEOUT_SECONDS,
     http_checker: HttpChecker = default_http_checker,
     time_fn=time.time,
+    peer_fetcher_factory=None,
 ) -> FastAPI:
     """Build the FastAPI app for a given (already-loaded) config.
 
@@ -601,6 +607,7 @@ def create_app(
     app.state.checker = checker
     app.state.http_checker = http_checker
     app.state.peer_fetcher = peer_fetcher
+    app.state.peer_fetcher_factory = peer_fetcher_factory
     app.state.peer_timeout = peer_timeout
     app.state.state_dir = resolve_state_dir(config)
     app.state.local_name = _local_name(config)
@@ -637,39 +644,86 @@ def create_app(
         local = _all_local_services_json()
         return [dict(svc, origin=app.state.local_name) for svc in local]
 
+    def _local_only_result() -> AggregationResult:
+        return AggregationResult(
+            services=_local_only_services(),
+            reachable_peers=[app.state.local_name],
+            unreachable_peers=[],
+        )
+
     def _aggregation_result(request: Request) -> AggregationResult:
-        """The SAME best-effort peer aggregation used by /api/services --
-        also the single source of truth for peer reachability (consumed by
-        /api/federation/nodes). Never probes peers a second time.
+        """Best-effort peer aggregation for /api/services -- also the single
+        source of truth for peer reachability (consumed by
+        /api/federation/nodes).
+
+        TRANSITIVE + LOOP-SAFE. A top-level (user-facing) request carries no
+        federation headers: it starts with an empty visited-set and the full
+        DEFAULT_MAX_HOPS budget. A request that arrives bearing the hop header
+        is another node's peer-fetch: it carries the visited-set of nodes
+        already traversed and the remaining hop budget. This node:
+
+          * answers LOCAL-ONLY (stopping the walk) if it is itself already in
+            ``visited`` -- a cycle -- or the budget is exhausted (ttl <= 0);
+          * otherwise fetches every trusted peer NOT already in ``visited``,
+            passing ``visited | {self}`` and ``ttl - 1``, and merges.
+
+        The visited-set makes a cycle impossible; the budget bounds depth. So
+        a CONNECTED graph aggregates fully (pair any new node to any one
+        member -- no full mesh needed) while a mutual/looping graph terminates.
+        Duplicates reachable via multiple paths are collapsed by (origin, name).
         """
-        # Defensive hop/visited guard: a request carrying the federation
-        # hop header is itself another node's peer-fetch. Even though
-        # default_peer_fetcher already targets the local-only endpoint
-        # (breaking the recursion at the root), this ensures that ANY
-        # aggregated endpoint hit with that header -- e.g. a misconfigured
-        # peer fetcher, or a future 3+ node graph -- degrades to a local-
-        # only answer instead of fanning out to further peers.
-        if request.headers.get(FEDERATION_HOP_HEADER):
-            return AggregationResult(
-                services=_local_only_services(),
-                reachable_peers=[app.state.local_name],
-                unreachable_peers=[],
-            )
         if not config.federation.enabled:
             # Federation off: still tag origin so the JSON shape is stable,
             # but never attempt any peer I/O.
-            return AggregationResult(
-                services=_local_only_services(),
-                reachable_peers=[app.state.local_name],
-                unreachable_peers=[],
-            )
-        peers = load_peers(app.state.state_dir)
-        return aggregate_services(
-            local_name=app.state.local_name,
+            return _local_only_result()
+
+        is_hop = request.headers.get(FEDERATION_HOP_HEADER) is not None
+        raw_visited = request.headers.get(FEDERATION_VISITED_HEADER, "")
+        visited = frozenset(n for n in raw_visited.split(",") if n)
+        raw_ttl = request.headers.get(FEDERATION_TTL_HEADER)
+        if raw_ttl is not None:
+            try:
+                ttl = int(raw_ttl)
+            except ValueError:
+                ttl = 0
+        elif is_hop:
+            # A hop with no explicit budget (e.g. an older/misconfigured peer
+            # fetcher) is treated as fully exhausted -- answer local-only,
+            # never fan out. Belt-and-suspenders against recursion.
+            ttl = 0
+        else:
+            ttl = DEFAULT_MAX_HOPS
+
+        me = app.state.local_name
+        if me in visited or ttl <= 0:
+            return _local_only_result()
+
+        new_visited = visited | {me}
+        peers = [p for p in load_peers(app.state.state_dir) if p.name not in new_visited]
+
+        # Select the fetcher. An injected raw fetcher (existing hermetic tests)
+        # is used as-is -- one level, visited/ttl not threaded -- preserving
+        # its behaviour exactly. A factory (transitive tests) or the production
+        # default builds a visited/ttl-aware fetcher that hits each peer's
+        # AGGREGATED endpoint so the walk continues, bounded, on the far side.
+        if app.state.peer_fetcher_factory is not None:
+            fetcher = app.state.peer_fetcher_factory(new_visited, ttl - 1)
+        elif app.state.peer_fetcher is default_peer_fetcher:
+            fetcher = make_default_transitive_fetcher(new_visited, ttl - 1)
+        else:
+            fetcher = app.state.peer_fetcher
+
+        result = aggregate_services(
+            local_name=me,
             local_services=_all_local_services_json(),
             peers=peers,
-            fetcher=app.state.peer_fetcher,
+            fetcher=fetcher,
             timeout=app.state.peer_timeout,
+        )
+        return AggregationResult(
+            services=dedupe_services(result.services),
+            reachable_peers=result.reachable_peers,
+            unreachable_peers=result.unreachable_peers,
         )
 
     def _aggregated_services(request: Request) -> list[dict]:
