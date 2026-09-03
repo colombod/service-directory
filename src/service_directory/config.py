@@ -155,6 +155,15 @@ class Service:
     # means "use the host address's scheme" -- fully backward-compatible
     # with configs that predate this field.
     scheme: str | None = None
+    # Task 5: optional per-service viewer configuration.
+    # ``view_url`` overrides the URL opened in the viewer pane (defaults to
+    # the primary resolved link). ``view_kind`` controls how the viewer
+    # renders it: "auto" (probe/content-type decides iframe vs json),
+    # "iframe" (always embed), "json" (always render as formatted JSON tree).
+    # Both are OPTIONAL -- omitting either preserves exact pre-existing
+    # behaviour (auto mode, primary link).
+    view_url: str | None = None
+    view_kind: str | None = None  # "auto" | "iframe" | "json" | None => auto
 
 
 @dataclass(frozen=True)
@@ -305,6 +314,27 @@ def _parse_service(raw: object, index: int) -> Service:
             f"http(s) scheme (got {docs_url!r})"
         )
     scheme = _parse_optional_scheme(raw, context)
+    # Task 5: optional viewer config fields.
+    view_url = raw.get("view_url")
+    if view_url is not None and not isinstance(view_url, str):
+        raise ConfigError(
+            f"Invalid config: {context} field 'view_url' must be a "
+            f"string (got {view_url!r})"
+        )
+    if view_url is not None and not is_safe_docs_url(view_url):
+        raise ConfigError(
+            f"Invalid config: {context} field 'view_url' must use an "
+            f"http(s) scheme (got {view_url!r})"
+        )
+    view_kind = raw.get("view_kind")
+    _ALLOWED_VIEW_KINDS = {"auto", "iframe", "json"}
+    if view_kind is not None and (
+        not isinstance(view_kind, str) or view_kind not in _ALLOWED_VIEW_KINDS
+    ):
+        raise ConfigError(
+            f"Invalid config: {context} field 'view_kind' must be one of "
+            f"{sorted(_ALLOWED_VIEW_KINDS)} (got {view_kind!r})"
+        )
     return Service(
         name=name,
         port=port,
@@ -316,6 +346,8 @@ def _parse_service(raw: object, index: int) -> Service:
         owner=owner,
         docs_url=docs_url,
         scheme=scheme,
+        view_url=view_url,
+        view_kind=view_kind,
     )
 
 
