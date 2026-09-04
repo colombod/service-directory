@@ -164,6 +164,10 @@ class Service:
     # behaviour (auto mode, primary link).
     view_url: str | None = None
     view_kind: str | None = None  # "auto" | "iframe" | "json" | None => auto
+    # ``view_refresh_seconds`` is a positive integer controlling auto-refresh
+    # for the JSON viewer. Accepted (and silently ignored) for non-JSON views.
+    # OPTIONAL -- omitting preserves exact pre-existing behaviour.
+    view_refresh_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -335,6 +339,21 @@ def _parse_service(raw: object, index: int) -> Service:
             f"Invalid config: {context} field 'view_kind' must be one of "
             f"{sorted(_ALLOWED_VIEW_KINDS)} (got {view_kind!r})"
         )
+    # view_refresh_seconds: optional positive int; JSON view only.
+    view_refresh_seconds = raw.get("view_refresh_seconds")
+    if view_refresh_seconds is not None:
+        if isinstance(view_refresh_seconds, bool) or not isinstance(
+            view_refresh_seconds, int
+        ):
+            raise ConfigError(
+                f"Invalid config: {context} field 'view_refresh_seconds' must be "
+                f"a positive integer (got {view_refresh_seconds!r})"
+            )
+        if view_refresh_seconds <= 0:
+            raise ConfigError(
+                f"Invalid config: {context} field 'view_refresh_seconds' must be "
+                f"a positive integer (got {view_refresh_seconds!r})"
+            )
     return Service(
         name=name,
         port=port,
@@ -348,6 +367,7 @@ def _parse_service(raw: object, index: int) -> Service:
         scheme=scheme,
         view_url=view_url,
         view_kind=view_kind,
+        view_refresh_seconds=view_refresh_seconds,
     )
 
 
