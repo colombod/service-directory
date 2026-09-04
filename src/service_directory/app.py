@@ -19,6 +19,8 @@ import html as html_escape
 import secrets
 import socket
 import time
+import json as _json
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -65,7 +67,7 @@ from .registry import (
     load_registry,
     register_service,
 )
-from .trust_store import PeerRecord, load_peers, upsert_peer
+from .trust_store import PeerRecord, load_peers, remove_peer, upsert_peer
 from .urls import resolve_all
 
 
@@ -662,6 +664,200 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "</script>\n"
     )
 
+    settings_script = (
+        "\n<script>\n"
+        "(function () {\n"
+        "  // ---- Settings panel (Tasks 1-4) ----\n"
+        "\n"
+        "  var settingsOverlay = document.getElementById('settings-overlay');\n"
+        "  var settingsBtn = document.getElementById('settings-btn');\n"
+        "  var settingsCloseBtn = document.getElementById('settings-close-btn');\n"
+        "\n"
+        "  function tokenHeaders() {\n"
+        "    var tokenInput = document.getElementById('write-token-input');\n"
+        "    var token = tokenInput ? (tokenInput.value || '').trim() : '';\n"
+        "    var headers = {'Content-Type': 'application/json'};\n"
+        "    if (token) { headers['Authorization'] = 'Bearer ' + token; }\n"
+        "    return headers;\n"
+        "  }\n"
+        "\n"
+        "  function openSettings() {\n"
+        "    if (!settingsOverlay) return;\n"
+        "    settingsOverlay.hidden = false;\n"
+        "    loadSettings();\n"
+        "  }\n"
+        "\n"
+        "  function closeSettings() {\n"
+        "    if (!settingsOverlay) return;\n"
+        "    settingsOverlay.hidden = true;\n"
+        "  }\n"
+        "\n"
+        "  if (settingsBtn) { settingsBtn.addEventListener('click', openSettings); }\n"
+        "  if (settingsCloseBtn) { settingsCloseBtn.addEventListener('click', closeSettings); }\n"
+        "  if (settingsOverlay) {\n"
+        "    settingsOverlay.addEventListener('click', function(e) {\n"
+        "      if (e.target === settingsOverlay) closeSettings();\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "  function escHtml(s) {\n"
+        "    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\\n"
+        "  }\n"
+        "\n"
+        "  function renderIdentity(data) {\n"
+        "    var el = document.getElementById('settings-identity-content');\n"
+        "    if (!el) return;\n"
+        "    var fedEnabled = data.federation_enabled;\n"
+        "    var badge = fedEnabled\n"
+        "      ? '<span class=\\\"settings-badge-enabled\\\">enabled</span>'\n"
+        "      : '<span class=\\\"settings-badge-disabled\\\">disabled</span>';\n"
+        "    var rows = [\n"
+        "      '<dt>Name</dt><dd>' + escHtml(data.name) + '</dd>',\n"
+        "      '<dt>Federation</dt><dd>' + badge + '</dd>',\n"
+        "    ];\n"
+        "    if (data.description) rows.push('<dt>Description</dt><dd>' + escHtml(data.description) + '</dd>');\n"
+        "    if (data.role) rows.push('<dt>Role</dt><dd>' + escHtml(data.role) + '</dd>');\n"
+        "    if (data.base_url) rows.push('<dt>Base URL</dt><dd>' + escHtml(data.base_url) + '</dd>');\n"
+        "    if (data.host_addresses && data.host_addresses.length) {\n"
+        "      var addrs = data.host_addresses.map(function(a) {\n"
+        "        return escHtml(a.label) + ': ' + escHtml(a.host);\n"
+        "      }).join(', ');\n"
+        "      rows.push('<dt>Addresses</dt><dd>' + addrs + '</dd>');\n"
+        "    }\n"
+        "    el.innerHTML = '<dl class=\\\"settings-kv\\\">' + rows.join('') + '</dl>';\n"
+        "    var pairingSec = document.getElementById('settings-pairing-section');\n"
+        "    if (pairingSec) pairingSec.style.display = fedEnabled ? '' : 'none';\n"
+        "  }\n"
+        "\n"
+        "  function renderPeers(peers) {\n"
+        "    var el = document.getElementById('settings-peers-content');\n"
+        "    if (!el) return;\n"
+        "    if (!peers || peers.length === 0) {\n"
+        "      el.innerHTML = '<p class=\\\"settings-empty\\\">This node is not federated with any peers yet.</p>';\n"
+        "      return;\n"
+        "    }\n"
+        "    var items = peers.map(function(p) {\n"
+        "      var reachClass = p.reachable ? 'up' : 'unknown';\n"
+        "      var reachText = p.reachable ? 'reachable' : 'unknown';\n"
+        "      return '<li class=\\\"settings-peer-item\\\">' +\n"
+        "        '<div style=\\\"flex:1;min-width:0\\\">' +\n"
+        "        '<div class=\\\"settings-peer-name\\\">' + escHtml(p.name) + '</div>' +\n"
+        "        '<div class=\\\"settings-peer-url\\\">' + escHtml(p.base_url) + '</div>' +\n"
+        "        '</div>' +\n"
+        "        '<span class=\\\"settings-peer-reachable ' + reachClass + '\\\">' + reachText + '</span>' +\n"
+        "        '<button type=\\\"button\\\" class=\\\"settings-remove-peer-btn\\\" data-peer-name=\\\"' + escHtml(p.name) + '\\\" title=\\\"Remove ' + escHtml(p.name) + '\\\">&times;</button>' +\n"
+        "        '</li>';\n"
+        "    }).join('');\n"
+        "    el.innerHTML = '<ul class=\\\"settings-peers-list\\\">' + items + '</ul>';\n"
+        "    el.querySelectorAll('.settings-remove-peer-btn').forEach(function(btn) {\n"
+        "      btn.addEventListener('click', function() {\n"
+        "        var name = btn.getAttribute('data-peer-name');\n"
+        "        if (!name) return;\n"
+        "        fetch('/api/federation/peers/' + encodeURIComponent(name), {\n"
+        "          method: 'DELETE',\n"
+        "          headers: tokenHeaders()\n"
+        "        }).then(function(resp) {\n"
+        "          if (!resp.ok) {\n"
+        "            return resp.json().catch(function() { return {}; }).then(function(d) {\n"
+        "              throw new Error((d && d.detail) || ('remove failed: ' + resp.status));\n"
+        "            });\n"
+        "          }\n"
+        "          return resp.json();\n"
+        "        }).then(function() { loadPeers(); })\n"
+        "        .catch(function(err) { window.alert(String(err.message || err)); });\n"
+        "      });\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "  function loadPeers() {\n"
+        "    var el = document.getElementById('settings-peers-content');\n"
+        "    if (el) el.innerHTML = '<span class=\\\"settings-loading\\\">Loading&hellip;</span>';\n"
+        "    fetch('/api/federation/peers').then(function(r) { return r.json(); })\n"
+        "      .then(renderPeers)\n"
+        "      .catch(function() {\n"
+        "        var el2 = document.getElementById('settings-peers-content');\n"
+        "        if (el2) el2.textContent = 'Failed to load peers.';\n"
+        "      });\n"
+        "  }\n"
+        "\n"
+        "  function loadSettings() {\n"
+        "    fetch('/api/settings').then(function(r) { return r.json(); })\n"
+        "      .then(renderIdentity)\n"
+        "      .catch(function() {\n"
+        "        var el = document.getElementById('settings-identity-content');\n"
+        "        if (el) el.textContent = 'Failed to load settings.';\n"
+        "      });\n"
+        "    loadPeers();\n"
+        "  }\n"
+        "\n"
+        "  var issueCodeBtn = document.getElementById('settings-issue-code-btn');\n"
+        "  if (issueCodeBtn) {\n"
+        "    issueCodeBtn.addEventListener('click', function() {\n"
+        "      var codeResult = document.getElementById('settings-code-result');\n"
+        "      fetch('/api/federation/ui-pairing-code', {\n"
+        "        method: 'POST',\n"
+        "        headers: tokenHeaders()\n"
+        "      }).then(function(resp) {\n"
+        "        if (!resp.ok) {\n"
+        "          return resp.json().catch(function() { return {}; }).then(function(d) {\n"
+        "            throw new Error((d && d.detail) || ('request failed: ' + resp.status));\n"
+        "          });\n"
+        "        }\n"
+        "        return resp.json();\n"
+        "      }).then(function(data) {\n"
+        "        if (codeResult) {\n"
+        "          codeResult.hidden = false;\n"
+        "          codeResult.innerHTML =\n"
+        "            '<div class=\\\"settings-code-value\\\">' + escHtml(data.code) + '</div>' +\n"
+        "            '<div class=\\\"settings-code-ttl\\\">Expires in ' + data.ttl_seconds + 's (one-time use)</div>';\n"
+        "        }\n"
+        "      }).catch(function(err) {\n"
+        "        if (codeResult) { codeResult.hidden = false; codeResult.textContent = String(err.message || err); }\n"
+        "      });\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "  var pairBtn = document.getElementById('settings-pair-btn');\n"
+        "  if (pairBtn) {\n"
+        "    pairBtn.addEventListener('click', function() {\n"
+        "      var urlInput = document.getElementById('settings-peer-url');\n"
+        "      var codeInput = document.getElementById('settings-peer-code');\n"
+        "      var errEl = document.getElementById('settings-pair-error');\n"
+        "      var okEl = document.getElementById('settings-pair-success');\n"
+        "      if (errEl) errEl.hidden = true;\n"
+        "      if (okEl) okEl.hidden = true;\n"
+        "      var url = urlInput ? urlInput.value.trim() : '';\n"
+        "      var code = codeInput ? codeInput.value.trim() : '';\n"
+        "      if (!url || !code) {\n"
+        "        if (errEl) { errEl.hidden = false; errEl.textContent = 'Peer URL and code are required.'; }\n"
+        "        return;\n"
+        "      }\n"
+        "      fetch('/api/federation/pair-with-peer', {\n"
+        "        method: 'POST',\n"
+        "        headers: tokenHeaders(),\n"
+        "        body: JSON.stringify({url: url, code: code})\n"
+        "      }).then(function(resp) {\n"
+        "        if (!resp.ok) {\n"
+        "          return resp.json().catch(function() { return {}; }).then(function(d) {\n"
+        "            throw new Error((d && d.detail) || ('pairing failed: ' + resp.status));\n"
+        "          });\n"
+        "        }\n"
+        "        return resp.json();\n"
+        "      }).then(function(data) {\n"
+        "        if (okEl) { okEl.hidden = false; okEl.textContent = 'Paired with ' + escHtml(data.name) + ' (' + escHtml(data.base_url) + ')'; }\n"
+        "        if (urlInput) urlInput.value = '';\n"
+        "        if (codeInput) codeInput.value = '';\n"
+        "        loadPeers();\n"
+        "      }).catch(function(err) {\n"
+        "        if (errEl) { errEl.hidden = false; errEl.textContent = String(err.message || err); }\n"
+        "      });\n"
+        "    });\n"
+        "  }\n"
+        "\n"
+        "})();\n"
+        "</script>\n"
+    )
+
     style = (
         "\n<style>\n"
         ":root {\n"
@@ -869,6 +1065,70 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "  #viewer { min-height: 60vh; }\n"
         "  .col-links { display: table-cell; }\n"
         "}\n"
+        "\n"
+        "/* Settings button in header */\n"
+        ".settings-btn { border: 1px solid var(--border-strong); background: var(--alt);\n"
+        "  color: var(--text-muted); border-radius: 6px; padding: 6px 12px; font-size: 13px;\n"
+        "  cursor: pointer; margin-left: auto; flex-shrink: 0; }\n"
+        ".settings-btn:hover { color: var(--text); }\n"
+        "\n"
+        "/* Settings overlay */\n"
+        ".settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;\n"
+        "  display: flex; align-items: flex-start; justify-content: flex-end; }\n"
+        ".settings-overlay[hidden] { display: none; }\n"
+        ".settings-panel { width: 480px; max-width: 100vw; height: 100vh; overflow-y: auto;\n"
+        "  background: var(--panel); border-left: 1px solid var(--border); display: flex;\n"
+        "  flex-direction: column; }\n"
+        ".settings-header { display: flex; align-items: center; padding: 18px 20px 14px;\n"
+        "  border-bottom: 1px solid var(--border); flex-shrink: 0; }\n"
+        ".settings-title { margin: 0; font-size: 16px; font-weight: 700; flex: 1; }\n"
+        ".settings-close-btn { border: none; background: none; font-size: 22px; cursor: pointer;\n"
+        "  color: var(--text-muted); padding: 0 4px; line-height: 1; }\n"
+        ".settings-close-btn:hover { color: var(--text); }\n"
+        ".settings-body { flex: 1; overflow-y: auto; padding: 0; }\n"
+        ".settings-section { padding: 18px 20px; border-bottom: 1px solid var(--border); }\n"
+        ".settings-section-title { margin: 0 0 12px; font-size: 12px; font-weight: 700;\n"
+        "  text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }\n"
+        ".settings-loading { color: var(--text-faint); font-size: 13px; }\n"
+        ".settings-kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px;\n"
+        "  font-size: 13px; margin-bottom: 8px; }\n"
+        ".settings-kv dt { color: var(--text-faint); font-weight: 600; font-size: 11px;\n"
+        "  text-transform: uppercase; letter-spacing: .04em; padding-top: 2px; }\n"
+        ".settings-kv dd { margin: 0; color: var(--text); word-break: break-all; }\n"
+        ".settings-badge-enabled { color: var(--up); font-weight: 600; }\n"
+        ".settings-badge-disabled { color: var(--text-faint); }\n"
+        ".settings-peers-list { list-style: none; margin: 0; padding: 0; }\n"
+        ".settings-peer-item { display: flex; align-items: center; gap: 10px; padding: 8px 0;\n"
+        "  border-bottom: 1px solid var(--border); font-size: 13px; }\n"
+        ".settings-peer-item:last-child { border-bottom: none; }\n"
+        ".settings-peer-name { font-weight: 600; flex: 1; }\n"
+        ".settings-peer-url { color: var(--text-muted); font-size: 11px; font-family: var(--mono); }\n"
+        ".settings-peer-reachable { font-size: 10px; font-weight: 600; padding: 1px 6px;\n"
+        "  border-radius: 4px; }\n"
+        ".settings-peer-reachable.up { color: var(--up); background: var(--up-bg); }\n"
+        ".settings-peer-reachable.unknown { color: var(--unknown); background: var(--unknown-bg); }\n"
+        ".settings-remove-peer-btn { border: none; background: none; color: var(--text-faint);\n"
+        "  font-size: 16px; cursor: pointer; padding: 0 3px; line-height: 1; }\n"
+        ".settings-remove-peer-btn:hover { color: var(--down); }\n"
+        ".settings-empty { color: var(--text-faint); font-size: 13px; font-style: italic; }\n"
+        ".settings-action-btn { padding: 8px 16px; font-size: 13px; font-weight: 600; color: #fff;\n"
+        "  background: var(--accent); border: none; border-radius: 7px; cursor: pointer; }\n"
+        ".settings-action-btn:hover { opacity: .9; }\n"
+        ".settings-code-result { margin-top: 10px; padding: 10px 14px; background: var(--alt);\n"
+        "  border: 1px solid var(--border-strong); border-radius: 7px; font-size: 13px; }\n"
+        ".settings-code-value { font-family: var(--mono); font-weight: 700; font-size: 15px;\n"
+        "  color: var(--accent); letter-spacing: .05em; }\n"
+        ".settings-code-ttl { color: var(--text-faint); font-size: 11px; margin-top: 4px; }\n"
+        ".pairing-subsection { margin-bottom: 18px; }\n"
+        ".pairing-subsection:last-child { margin-bottom: 0; }\n"
+        ".pairing-hint { color: var(--text-muted); font-size: 12px; margin: 0 0 8px; }\n"
+        ".pairing-form-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }\n"
+        ".settings-input { width: 100%; padding: 8px 10px; font-size: 13px; color: var(--text);\n"
+        "  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 7px; }\n"
+        ".settings-input:focus { outline: none; border-color: var(--accent);\n"
+        "  box-shadow: 0 0 0 3px var(--accent-weak); }\n"
+        ".settings-error { margin-top: 8px; color: var(--down); font-size: 12px; }\n"
+        ".settings-success { margin-top: 8px; color: var(--up); font-size: 12px; font-weight: 600; }\n"
         "</style>\n"
     )
 
@@ -886,6 +1146,9 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         '<h1 class="brand">Service Directory</h1>'
         f'<div class="node-chip">{identity_html}</div>'
         "</div>"
+        '<button id="settings-btn" class="settings-btn" title="Settings" aria-label="Settings">'
+        "&#9881; Settings"
+        "</button>"
         "</header>"
         '<div class="workspace">'
         '<nav id="sidebar" data-collapsed="false">'
@@ -938,7 +1201,62 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "</div>"
         "</div>"
         "</div>"
+        # Settings overlay panel (hidden by default, shown when settings-btn clicked)
+        '<div id="settings-overlay" class="settings-overlay" hidden>'
+        '<div class="settings-panel">'
+        '<div class="settings-header">'
+        '<h2 class="settings-title">Settings</h2>'
+        '<button id="settings-close-btn" class="settings-close-btn" title="Close settings">&times;</button>'
+        "</div>"
+        '<div class="settings-body">'
+        # Write token row (reuses the existing write-token-input id)
+        '<div class="settings-section">'
+        '<h3 class="settings-section-title">Write Token</h3>'
+        '<div class="write-token-row">'
+        '<label for="write-token-input">Write token '
+        '<span class="hint">(required for mutations)</span></label> '
+        '<input type="password" id="write-token-input" '
+        'placeholder="Bearer write token (optional on localhost)" />'
+        "</div>"
+        "</div>"
+        # Identity section (populated by JS from /api/settings)
+        '<div class="settings-section" id="settings-identity-section">'
+        '<h3 class="settings-section-title">Node Identity</h3>'
+        '<div id="settings-identity-content" class="settings-loading">Loading&hellip;</div>'
+        "</div>"
+        # Peers section
+        '<div class="settings-section" id="settings-peers-section">'
+        '<h3 class="settings-section-title">Trusted Peers</h3>'
+        '<div id="settings-peers-content" class="settings-loading">Loading&hellip;</div>'
+        "</div>"
+        # Pairing section (only shown when federation enabled)
+        '<div class="settings-section" id="settings-pairing-section">'
+        '<h3 class="settings-section-title">Pairing</h3>'
+        '<div id="settings-pairing-content">'
+        # Issue code subsection
+        '<div class="pairing-subsection">'
+        '<p class="pairing-hint">Issue a one-time code so another node can pair with this one:</p>'
+        '<button id="settings-issue-code-btn" class="settings-action-btn">Issue pairing code</button>'
+        '<div id="settings-code-result" class="settings-code-result" hidden></div>'
+        "</div>"
+        # Pair with peer subsection
+        '<div class="pairing-subsection">'
+        '<p class="pairing-hint">Pair with a peer using a code they issued:</p>'
+        '<div class="pairing-form-row">'
+        '<input type="url" id="settings-peer-url" class="settings-input" placeholder="Peer base URL (https://…)" />'
+        '<input type="text" id="settings-peer-code" class="settings-input" placeholder="Pairing code" />'
+        '<button id="settings-pair-btn" class="settings-action-btn">Pair with peer</button>'
+        "</div>"
+        '<div id="settings-pair-error" class="settings-error" hidden></div>'
+        '<div id="settings-pair-success" class="settings-success" hidden></div>'
+        "</div>"
+        "</div>"
+        "</div>"
+        "</div>"
+        "</div>"
+        "</div>"
         + script
+        + settings_script
         + "</body></html>"
     )
 def _local_services_json(config: RegistryConfig) -> list[dict]:
@@ -1017,6 +1335,11 @@ class PairRequest(BaseModel):
     code: str
 
 
+class PairWithPeerRequest(BaseModel):
+    url: str
+    code: str
+
+
 class ServiceRegistration(BaseModel):
     name: str
     port: int | None = None
@@ -1042,6 +1365,7 @@ def create_app(
     peer_fetcher_factory=None,
     embed_probe=None,
     view_proxy=None,
+    pair_with_peer_fn=None,
 ) -> FastAPI:
     """Build the FastAPI app for a given (already-loaded) config.
 
@@ -1057,6 +1381,9 @@ def create_app(
     ``embed_probe(url) -> dict`` returns {reachable, embeddable, content_type}.
     ``view_proxy(url) -> dict|None`` returns the parsed JSON body or None for
     SSRF-guarded refusals.
+    ``pair_with_peer_fn(url, payload) -> dict`` is the injectable seam for
+    hermetic testing of /api/federation/pair-with-peer -- when set, the real
+    HTTP call to the peer is bypassed.
     """
     app = FastAPI(title="service-directory")
     app.state.config = config
@@ -1071,6 +1398,7 @@ def create_app(
     app.state.time_fn = time_fn
     app.state.embed_probe = embed_probe
     app.state.view_proxy = view_proxy
+    app.state.pair_with_peer_fn = pair_with_peer_fn
 
     def _static_names() -> set[str]:
         return {svc.name for svc in config.services}
@@ -1460,6 +1788,158 @@ def create_app(
                 "device_id": identity.device_id,
                 "base_url": config.federation.base_url,
                 "token": token,
+            }
+        )
+
+    # ---- Settings / federation management API (Tasks 1-4) ------------------
+
+    @app.get("/api/settings")
+    def api_settings(request: Request) -> JSONResponse:
+        """Read-only identity + federation settings for this node.
+
+        Returns the federation name, description, role, base_url, enabled
+        flag, and host_addresses -- sourced from the live config, never
+        hardcoded. Same read-access rules as /api/services.
+        """
+        require_read_access(
+            request, app.state.state_dir, config.federation.require_read_token
+        )
+        return JSONResponse(
+            {
+                "name": app.state.local_name,
+                "description": config.federation.description,
+                "role": config.federation.role,
+                "base_url": config.federation.base_url,
+                "federation_enabled": config.federation.enabled,
+                "host_addresses": [
+                    {"label": ha.label, "host": ha.host}
+                    for ha in config.host_addresses
+                ],
+            }
+        )
+
+    @app.get("/api/federation/peers")
+    def api_list_peers(request: Request) -> JSONResponse:
+        """List trusted peers with name, base_url, and last-known reachability.
+
+        Same read-access rules as /api/services.
+        """
+        require_read_access(
+            request, app.state.state_dir, config.federation.require_read_token
+        )
+        result = _aggregation_result(request)
+        unreachable = set(result.unreachable_peers)
+        peers = load_peers(app.state.state_dir)
+        return JSONResponse(
+            [
+                {
+                    "name": p.name,
+                    "base_url": p.base_url,
+                    "device_id": p.device_id,
+                    "reachable": p.name not in unreachable,
+                }
+                for p in peers
+            ]
+        )
+
+    @app.delete("/api/federation/peers/{name}")
+    def api_remove_peer(name: str, request: Request) -> JSONResponse:
+        """Remove a trusted peer by name. Requires write-token auth."""
+        require_write_access(
+            request, app.state.state_dir, config.federation.require_write_token
+        )
+        removed = remove_peer(app.state.state_dir, name)
+        if not removed:
+            raise HTTPException(status_code=404, detail=f"no trusted peer '{name}'")
+        return JSONResponse({"removed": name})
+
+    @app.post("/api/federation/ui-pairing-code")
+    def api_ui_issue_pairing_code(request: Request) -> JSONResponse:
+        """Mint a short-lived, one-time pairing code.
+
+        Unlike the existing /api/federation/pairing-code (which uses the
+        admin/localhost bypass), this endpoint uses the WRITE TOKEN so the
+        UI can call it from a remote browser with the same write-token the
+        user already has. Returns the code and its TTL in seconds.
+        """
+        require_write_access(
+            request, app.state.state_dir, config.federation.require_write_token
+        )
+        code = app.state.pairing_store.issue()
+        from .pairing import DEFAULT_PAIRING_TTL_SECONDS
+
+        return JSONResponse({"code": code, "ttl_seconds": DEFAULT_PAIRING_TTL_SECONDS})
+
+    @app.post("/api/federation/pair-with-peer")
+    def api_pair_with_peer(
+        body: PairWithPeerRequest, request: Request
+    ) -> JSONResponse:
+        """Initiate pairing with a remote peer node from the UI.
+
+        Equivalent to ``service-directory pair --url URL --code CODE``:
+        presents our identity + the code to the peer's /api/federation/pair
+        endpoint, receives the peer's identity + per-peer token, records the
+        peer in our trust store, and returns the new peer record (without
+        the token). Requires write-token auth. Peer HTTP calls use the
+        injectable ``pair_with_peer_fn`` seam for hermetic testing.
+        """
+        require_write_access(
+            request, app.state.state_dir, config.federation.require_write_token
+        )
+        identity = load_or_create_identity(app.state.state_dir)
+        payload = {
+            "device_id": identity.device_id,
+            "name": app.state.local_name,
+            "base_url": config.federation.base_url,
+            "code": body.code,
+        }
+        # Use injectable seam for hermetic tests.
+        pair_fn = getattr(app.state, "pair_with_peer_fn", None)
+        if pair_fn is not None:
+            try:
+                data = pair_fn(body.url, payload)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502, detail=f"pairing failed: {exc}"
+                ) from exc
+        else:
+            try:
+                req = urllib.request.Request(
+                    f"{body.url.rstrip('/')}/api/federation/pair",
+                    data=_json.dumps(payload).encode(),
+                    method="POST",
+                )
+                req.add_header("Content-Type", "application/json")
+                req.add_header("User-Agent", "service-directory-pair/1.0")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = _json.loads(resp.read())
+            except urllib.error.HTTPError as exc:
+                try:
+                    detail = _json.loads(exc.read()).get("detail", str(exc))
+                except Exception:  # noqa: BLE001 - defensive; exc.read() may fail
+                    detail = str(exc)
+                raise HTTPException(
+                    status_code=502, detail=f"pairing failed: {detail}"
+                ) from exc
+            except Exception as exc:  # noqa: BLE001 - CLI must report, never stack-trace
+                raise HTTPException(
+                    status_code=502, detail=f"pairing failed: {exc}"
+                ) from exc
+
+        upsert_peer(
+            app.state.state_dir,
+            PeerRecord(
+                name=data["name"],
+                device_id=data["device_id"],
+                base_url=data["base_url"],
+                token=data["token"],
+            ),
+        )
+        return JSONResponse(
+            {
+                "name": data["name"],
+                "device_id": data["device_id"],
+                "base_url": data["base_url"],
             }
         )
 
