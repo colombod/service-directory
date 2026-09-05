@@ -24,6 +24,19 @@ performed locally (where Tailscale and the real services exist).
 - **Block 3 — Self-management** (`doctor`, systemd/launchd service install,
   upgrade, uv-tool packaging). See below.
 
+## Documentation
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system shape, module map,
+  config schema, and the static/dynamic/federation precedence rules.
+- [`docs/API.md`](docs/API.md) — every HTTP endpoint, with auth requirements
+  and a runnable `curl` example each.
+- [`docs/UI.md`](docs/UI.md) — what a user sees and can do: catalogue,
+  filtering, the in-app viewer's `auto`/`iframe`/`json` modes, and Settings.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — install, config, service
+  install (systemd/launchd), HTTPS via Tailscale, and the full CLI reference.
+- [`docs/FEDERATION.md`](docs/FEDERATION.md) — pairing two nodes end to end,
+  and how to actually verify the catalogues merged (not just the handshake).
+
 ## Install
 
 ```bash
