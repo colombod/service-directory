@@ -190,6 +190,7 @@ def test_run_doctor_returns_a_check_per_area(sample_config):
     results = run_doctor(deps)
     names = {r.name for r in results}
     assert names == {
+        "Version",
         "Python version",
         "Config",
         "Bind port",
@@ -211,6 +212,7 @@ def test_run_doctor_never_crashes_on_bad_config():
     # Must still produce a full checklist, not crash/raise.
     assert len(results) == len(
         {
+            "Version",
             "Python version",
             "Config",
             "Bind port",

@@ -114,6 +114,37 @@ Auth model:
 Peer/rendered links keep preferring the tailnet address: `host_addresses`
 stays tailnet-first exactly as in Block 1.
 
+### Node version
+
+The running version comes from ONE place -- `pyproject.toml`'s
+`[project].version` -- resolved at runtime from the installed
+distribution's metadata (`importlib.metadata`), never hardcoded or parsed
+from `pyproject.toml` itself. It is reachable without shell access to the
+machine via either JSON endpoint:
+
+```bash
+curl http://node-a:80/api/instance-info
+# {"name": "node-a", "device_id": "...", "version": "0.1.0", "federation_enabled": true}
+
+curl http://node-a:80/api/settings
+# {"name": "node-a", "description": null, "role": null, "base_url": "...",
+#  "federation_enabled": true, "version": "0.1.0", "host_addresses": [...]}
+```
+
+`GET /api/federation/nodes` also carries `version` on every entry -- the
+local node AND each trusted peer (fetched live from that peer's own
+`/api/instance-info` during the same best-effort aggregation pass used for
+`/api/services`). A peer that is unreachable, or too old to report a
+version, gets `version: null` -- explicitly unknown, never rendered as
+"same version as me".
+
+Also available from the CLI:
+
+```bash
+service-directory --version
+service-directory doctor   # first checklist line is the running version
+```
+
 ## Self-management (Block 3)
 
 ```bash

@@ -96,6 +96,45 @@ def default_peer_fetcher(peer: PeerRecord, timeout: float) -> list[dict]:
     return data
 
 
+# A peer-info fetcher takes (peer, timeout_seconds) and returns the peer's
+# parsed ``/api/instance-info`` JSON body (a dict) on success, or ``None`` on
+# ANY failure (timeout, connection error, non-2xx, bad JSON, peer too old to
+# have the endpoint). Used by ``/api/federation/nodes`` to enrich each trust
+# -store peer entry with LIVE metadata -- description, role, and version --
+# none of which are persisted in ``peers.json`` (which only ever stores
+# name/device_id/base_url/token). Unlike ``PeerFetcher`` (which raises on
+# failure), this returns ``None`` so the caller can represent those fields
+# as explicitly unknown rather than fabricating a value or crashing.
+PeerInfoFetcher = Callable[[PeerRecord, float], "dict | None"]
+
+
+def default_peer_info_fetcher(peer: PeerRecord, timeout: float) -> dict | None:
+    """Real implementation: GET {peer.base_url}/api/instance-info, bounded
+    to ``timeout`` seconds, using the peer's bearer token (harmless since
+    the endpoint is itself unauthenticated, but consistent with every other
+    peer call). Returns ``None`` on any failure -- callers must treat that
+    as "this peer's live metadata is unknown", never as agreement with the
+    local node's own version.
+    """
+    import httpx2 as httpx
+
+    url = peer.base_url.rstrip("/") + "/api/instance-info"
+    headers = {
+        "Authorization": f"Bearer {peer.token}",
+        FEDERATION_HOP_HEADER: "1",
+    }
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:  # noqa: BLE001 - peer info is best-effort only
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
 def make_default_transitive_fetcher(visited: frozenset[str], ttl: int) -> PeerFetcher:
     """Build a real-HTTP peer fetcher for the TRANSITIVE path.
 
@@ -183,6 +222,41 @@ def _fetch_one(
         return peer.name, None
 
 
+def _fetch_info_one(
+    peer: PeerRecord, fetcher: PeerInfoFetcher, timeout: float
+) -> tuple[str, dict | None]:
+    try:
+        result = fetcher(peer, timeout)
+    except Exception:  # noqa: BLE001 - any peer failure must never break the caller
+        result = None
+    return peer.name, result
+
+
+def fetch_peers_info(
+    peers: list[PeerRecord],
+    fetcher: PeerInfoFetcher = default_peer_info_fetcher,
+    timeout: float = DEFAULT_PEER_TIMEOUT_SECONDS,
+) -> dict[str, dict | None]:
+    """Concurrently fetch each peer's live ``/api/instance-info``.
+
+    Returns a dict keyed by peer name; a peer whose fetch failed (down,
+    timeout, too old to have the endpoint, malformed body) maps to ``None``
+    -- callers must render that as explicitly unknown metadata, never as
+    "same as the local node" and never fabricated.
+    """
+    results: dict[str, dict | None] = {}
+    if not peers:
+        return results
+    with ThreadPoolExecutor(max_workers=max(1, len(peers))) as pool:
+        futures = [
+            pool.submit(_fetch_info_one, peer, fetcher, timeout) for peer in peers
+        ]
+        for future in futures:
+            name, info = future.result()
+            results[name] = info
+    return results
+
+
 def aggregate_services(
     local_name: str,
     local_services: list[dict],
@@ -228,8 +302,11 @@ __all__ = [
     "FEDERATION_VISITED_HEADER",
     "AggregationResult",
     "PeerFetcher",
+    "PeerInfoFetcher",
     "aggregate_services",
     "dedupe_services",
     "default_peer_fetcher",
+    "default_peer_info_fetcher",
+    "fetch_peers_info",
     "make_default_transitive_fetcher",
 ]

@@ -46,9 +46,12 @@ from .federation import (
     FEDERATION_VISITED_HEADER,
     AggregationResult,
     PeerFetcher,
+    PeerInfoFetcher,
     aggregate_services,
     dedupe_services,
     default_peer_fetcher,
+    default_peer_info_fetcher,
+    fetch_peers_info,
     make_default_transitive_fetcher,
 )
 from .health import (
@@ -1366,6 +1369,7 @@ def create_app(
     embed_probe=None,
     view_proxy=None,
     pair_with_peer_fn=None,
+    peer_info_fetcher: PeerInfoFetcher | None = None,
 ) -> FastAPI:
     """Build the FastAPI app for a given (already-loaded) config.
 
@@ -1384,6 +1388,17 @@ def create_app(
     ``pair_with_peer_fn(url, payload) -> dict`` is the injectable seam for
     hermetic testing of /api/federation/pair-with-peer -- when set, the real
     HTTP call to the peer is bypassed.
+    ``peer_info_fetcher(peer, timeout) -> dict | None`` is the injectable
+    seam for /api/federation/nodes: fetches a trusted peer's LIVE
+    ``/api/instance-info`` (description, role, version) so those fields
+    reflect the peer's actual current metadata rather than the trust
+    store's static name/device_id/base_url/token. Defaults to ``None`` so
+    the hermetic test suite never performs real peer I/O by accident;
+    ``create_app_from_env`` wires in the real ``default_peer_info_fetcher``
+    for production. Returns ``None`` on any failure -- that peer's
+    live-only fields (description/role/version) are then represented as
+    explicitly unknown (``None``), never fabricated and never treated as
+    "matches the local node".
     """
     app = FastAPI(title="service-directory")
     app.state.config = config
@@ -1399,6 +1414,7 @@ def create_app(
     app.state.embed_probe = embed_probe
     app.state.view_proxy = view_proxy
     app.state.pair_with_peer_fn = pair_with_peer_fn
+    app.state.peer_info_fetcher = peer_info_fetcher
 
     def _static_names() -> set[str]:
         return {svc.name for svc in config.services}
@@ -1719,6 +1735,16 @@ def create_app(
         plus each trusted peer, with reachability reused from the SAME
         best-effort peer aggregation used by /api/services -- never a
         second probe. Same read-access rules as /api/services.
+
+        Each trusted peer's ``description``/``role``/``version`` are LIVE
+        metadata fetched from that peer's own ``/api/instance-info`` (best
+        -effort, same per-peer timeout budget as everything else in
+        federation) -- NOT read from the local trust store, which only
+        ever persists name/device_id/base_url/token. A peer that is
+        unreachable, or too old to expose ``/api/instance-info``, has
+        ``description``/``role``/``version`` reported as ``None`` --
+        explicitly unknown, and must never be read as "same version/role/
+        description as the local node".
         """
         require_read_access(
             request, app.state.state_dir, config.federation.require_read_token
@@ -1735,17 +1761,31 @@ def create_app(
                 "device_id": identity.device_id,
                 "base_url": config.federation.base_url,
                 "reachable": True,
+                "version": __version__,
             }
         ]
-        for peer in load_peers(app.state.state_dir):
+        peers = load_peers(app.state.state_dir)
+        # No fetcher configured (hermetic tests / callers that don't care
+        # about live peer metadata) => never attempt real peer I/O here;
+        # every peer's description/role/version is reported as unknown
+        # (None) rather than silently blocking on a real network call.
+        info_fetcher = getattr(app.state, "peer_info_fetcher", None)
+        live_info: dict = {}
+        if peers and info_fetcher is not None:
+            live_info = fetch_peers_info(
+                peers, fetcher=info_fetcher, timeout=app.state.peer_timeout
+            )
+        for peer in peers:
+            info = live_info.get(peer.name) or {}
             nodes.append(
                 {
                     "name": peer.name,
-                    "description": None,
-                    "role": None,
+                    "description": info.get("description"),
+                    "role": info.get("role"),
                     "device_id": peer.device_id,
                     "base_url": peer.base_url,
                     "reachable": peer.name not in unreachable,
+                    "version": info.get("version"),
                 }
             )
         return JSONResponse(nodes)
@@ -1811,6 +1851,7 @@ def create_app(
                 "role": config.federation.role,
                 "base_url": config.federation.base_url,
                 "federation_enabled": config.federation.enabled,
+                "version": __version__,
                 "host_addresses": [
                     {"label": ha.label, "host": ha.host}
                     for ha in config.host_addresses
@@ -2032,9 +2073,15 @@ def create_app_from_env(config_path: str | None = None) -> FastAPI:
     an explicit path). Raises :class:`ConfigError` on malformed config --
     callers (the CLI) are responsible for turning that into a clear,
     non-crashing user-facing message.
+
+    Unlike ``create_app`` (whose ``peer_info_fetcher`` defaults to ``None``
+    so the hermetic test suite never performs real peer I/O), the actual
+    running server DOES want live peer metadata (description/role/version)
+    on ``/api/federation/nodes`` -- so production wires in the real
+    ``default_peer_info_fetcher`` here.
     """
     config = load_config(config_path)
-    return create_app(config)
+    return create_app(config, peer_info_fetcher=default_peer_info_fetcher)
 
 
 __all__ = ["ConfigError", "create_app", "create_app_from_env"]
