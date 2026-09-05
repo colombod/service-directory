@@ -13,6 +13,8 @@ All tests run under filterwarnings=error::DeprecationWarning (green).
 
 from __future__ import annotations
 
+import html.parser
+
 import pytest
 from fastapi.testclient import TestClient
 from service_directory.app import _render_html, create_app
@@ -179,6 +181,161 @@ class TestTask1TwoPaneLayout:
         html = _localhost_client(app).get("/").text
         assert "<script src=" not in html
         assert "cdn." not in html.lower()
+
+
+# ---------------------------------------------------------------------------
+# Sidebar-collapse-is-not-a-trap: a re-open affordance must exist OUTSIDE
+# #sidebar, since collapsing #sidebar (width:0/height:0; overflow:hidden)
+# hides anything rendered inside it -- including the only collapse control.
+# ---------------------------------------------------------------------------
+
+
+_VOID_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+
+
+def _sidebar_span_contains(html_text: str, container_id: str, target_id: str) -> bool:
+    """True if target_id's opening tag lies between container_id's open/close.
+
+    Walks tokens with stdlib html.parser.HTMLParser (no bs4/lxml available
+    in this project), tracking depth relative to the container element
+    (identified by id=container_id). Returns True iff the target element's
+    start tag is encountered while still inside that container -- i.e. it
+    is a genuine DOM descendant, not just later in the raw markup.
+    """
+
+    class _SpanParser(html.parser.HTMLParser):
+        _VOID_TAGS = _VOID_TAGS
+
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.container_tag = None
+            self.depth_in_container = 0
+            self.found_inside = False
+            self._tag_stack: list[tuple[str, bool]] = []  # (tag, is_container)
+
+        def handle_starttag(self, tag, attrs):
+            attr_dict = dict(attrs)
+            elem_id = attr_dict.get("id")
+            is_container = elem_id == container_id
+            if elem_id == target_id and self.depth_in_container > 0:
+                self.found_inside = True
+            if tag not in self._VOID_TAGS:
+                self._tag_stack.append((tag, is_container))
+                if is_container:
+                    self.depth_in_container += 1
+
+        def handle_startendtag(self, tag, attrs):
+            attr_dict = dict(attrs)
+            elem_id = attr_dict.get("id")
+            if elem_id == target_id and self.depth_in_container > 0:
+                self.found_inside = True
+
+        def handle_endtag(self, tag):
+            if self._tag_stack and tag in [t for t, _ in self._tag_stack]:
+                while self._tag_stack and self._tag_stack[-1][0] != tag:
+                    self._tag_stack.pop()
+                if self._tag_stack:
+                    _popped_tag, popped_is_container = self._tag_stack.pop()
+                    if popped_is_container:
+                        self.depth_in_container -= 1
+
+    parser = _SpanParser()
+    parser.feed(html_text)
+    return parser.found_inside
+
+
+class TestSidebarCollapseIsNotATrap:
+    """A collapsed #sidebar (width:0/height:0;overflow:hidden) must not be
+    the only place a re-open control lives -- otherwise collapsing it traps
+    the user until a full page reload.
+    """
+
+    def test_reopen_control_exists_and_is_not_inside_sidebar(self, tmp_path):
+        """A visible, labelled re-open affordance must live OUTSIDE #sidebar.
+
+        This is the core regression test: against the pre-fix code, the only
+        control capable of un-collapsing the sidebar (#sidebar-collapse-btn)
+        is rendered INSIDE <nav id="sidebar">, which the CSS rule
+        `#sidebar[data-collapsed="true"] { width: 0; ... overflow: hidden; }`
+        hides completely once collapsed. This test must fail against that
+        layout.
+        """
+        config = _make_config(tmp_path)
+        app = create_app(config, checker=_all_down)
+        page = _localhost_client(app).get("/").text
+
+        # There must be at least one control, other than the in-sidebar
+        # collapse button, that can re-open the sidebar.
+        assert "sidebar-expand-btn" in page, (
+            "no outside-of-sidebar re-open control found; the sidebar "
+            "collapse trap is not fixed"
+        )
+        assert not _sidebar_span_contains(page, "sidebar", "sidebar-expand-btn"), (
+            "the re-open control is nested inside #sidebar -- it will be "
+            "hidden by #sidebar[data-collapsed=\"true\"]'s overflow:hidden "
+            "rule, recreating the collapse trap"
+        )
+
+    def test_reopen_control_has_labelled_state(self, tmp_path):
+        """The outside control must expose aria-expanded and a title/label."""
+        config = _make_config(tmp_path)
+        app = create_app(config, checker=_all_down)
+        page = _localhost_client(app).get("/").text
+        assert 'id="sidebar-expand-btn"' in page
+        # Grab the opening tag for the expand button and check it carries
+        # both an aria-expanded attribute and a title/aria-label.
+        start = page.index('id="sidebar-expand-btn"')
+        tag_start = page.rindex("<", 0, start)
+        tag_end = page.index(">", start)
+        opening_tag = page[tag_start : tag_end + 1]
+        assert "aria-expanded=" in opening_tag
+        assert "title=" in opening_tag or "aria-label=" in opening_tag
+
+    def test_collapse_and_expand_js_toggle_both_controls(self, tmp_path):
+        """The JS must wire up both buttons to toggle data-collapsed and
+        keep aria-expanded/title in sync on both, so the exposed state is
+        never a lie."""
+        config = _make_config(tmp_path)
+        app = create_app(config, checker=_all_down)
+        page = _localhost_client(app).get("/").text
+        assert "sidebar-expand-btn" in page
+        assert "aria-expanded" in page
+        # The expand button must have a click handler wired somewhere in
+        # the inline script referencing its id.
+        script_start = page.index("<script")
+        script = page[script_start:]
+        assert "sidebar-expand-btn" in script
+        assert "addEventListener" in script
+
+    def test_mobile_breakpoint_also_has_reopen_path(self, tmp_path):
+        """The same trap exists at the mobile breakpoint (height:0 rule);
+        the fix must not be desktop-only. The re-open control's CSS must
+        remain reachable (not itself hidden) inside the same
+        max-width:720px media block that collapses the sidebar's height."""
+        config = _make_config(tmp_path)
+        app = create_app(config, checker=_all_down)
+        page = _localhost_client(app).get("/").text
+        media_start = page.index("@media (max-width: 720px)")
+        media_end = page.index("}\n", page.index("}\n", media_start) + 1)
+        # Ensure the mobile block doesn't hide/remove the expand button by
+        # name (i.e. no `#sidebar-expand-btn { display: none` inside it).
+        mobile_block = page[media_start:media_end]
+        assert "#sidebar-expand-btn { display: none" not in mobile_block
+        assert "#sidebar-expand-btn{display:none" not in mobile_block.replace(
+            " ", ""
+        )
+
+    def test_existing_collapse_button_unaffected(self, tmp_path):
+        """The pre-existing in-sidebar collapse button must still exist and
+        still work -- this fix is additive, not a replacement."""
+        config = _make_config(tmp_path)
+        app = create_app(config, checker=_all_down)
+        page = _localhost_client(app).get("/").text
+        assert 'id="sidebar-collapse-btn"' in page
+        assert _sidebar_span_contains(page, "sidebar", "sidebar-collapse-btn")
 
 
 # ---------------------------------------------------------------------------
