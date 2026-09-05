@@ -14,6 +14,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from . import __version__
 from .config import ConfigError, RegistryConfig, load_config, resolve_state_dir
 from .install_source import (
     DEFAULT_DISTRIBUTION_NAME,
@@ -57,6 +58,24 @@ def _run_check(name: str, fn: Callable[[], CheckResult]) -> CheckResult:
         return CheckResult(
             name=name, status=STATUS_FAIL, message=f"check errored: {exc}"
         )
+
+
+def check_version(version: str = __version__) -> CheckResult:
+    """Report the running package version -- the first thing anyone reads
+    when diagnosing a node. Resolved from installed distribution metadata
+    (see ``service_directory.__version__``), never hardcoded here.
+
+    ``"unknown"`` (the honest degradation when metadata is genuinely
+    absent, e.g. an uninstalled source checkout) is reported as a warning
+    rather than a failure -- doctor still runs to completion.
+    """
+    if version == "unknown":
+        return CheckResult(
+            name="Version",
+            status=STATUS_WARN,
+            message="could not determine installed version (package metadata not found)",
+        )
+    return CheckResult(name="Version", status=STATUS_OK, message=version)
 
 
 def check_python_version(
@@ -265,6 +284,7 @@ class DoctorDependencies:
     update_checker_fn: Callable[[InstallSource], str | None] | None = None
     service_manager_factory: Callable[[], ServiceManager] | None = None
     python_version_info: tuple[int, int, int] | tuple[int, int] = sys.version_info[:2]
+    version: str = __version__
 
 
 def run_doctor(deps: DoctorDependencies | None = None) -> list[CheckResult]:
@@ -272,6 +292,8 @@ def run_doctor(deps: DoctorDependencies | None = None) -> list[CheckResult]:
     deps = deps or DoctorDependencies()
 
     results: list[CheckResult] = []
+
+    results.append(_run_check("Version", lambda: check_version(deps.version)))
 
     results.append(
         _run_check(
@@ -392,6 +414,7 @@ __all__ = [
     "check_peer_reachability",
     "check_python_version",
     "check_service_status",
+    "check_version",
     "format_checklist",
     "run_and_format",
     "run_doctor",

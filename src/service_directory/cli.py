@@ -12,6 +12,7 @@ import os
 import socket
 import sys
 
+from . import __version__
 from .config import ConfigError, load_config, resolve_state_dir
 
 DEFAULT_HOST = "0.0.0.0"
@@ -20,6 +21,12 @@ DEFAULT_PORT = 80
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="service-directory")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Print the installed version and exit",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     serve = subparsers.add_parser("serve", help="Run the dashboard web server")
