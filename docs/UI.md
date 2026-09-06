@@ -128,16 +128,19 @@ Each row shows a health pill (`.health-pill` / `.health-dot`, states
 client-side by a `fetch('/api/health')` call on page load (no per-row
 polling; one batched request for the whole catalogue).
 
-## 7. Adding and removing dynamic services from the dashboard
+## 7. Removing dynamic services from the dashboard
 
-The "Add service" form (`#add-service-form`) posts `name`, `port`,
-`description`, `category`, `health_url` to `POST /api/services`. A dynamic
-row also gets a `×` remove button (`.remove-service`,
+A dynamic row gets a × remove button (`.remove-service`,
 `data-remove-name="<name>"`) that calls `DELETE
-/api/services/{name}`. Both requests attach the `write-token-input` field's
-value as `Authorization: Bearer <token>` when non-empty (see §8) — a static
+/api/services/{name}`. The request attaches the `write-token-input` field's
+value (see §8) as `Authorization: Bearer <token>` when non-empty (see §8) — a static
 service never gets a remove button, matching the API's read-only rule for
-static entries.
+static entries. Removing a service refreshes the sidebar catalogue in
+place — no page reload.
+
+Registering a NEW service is an administrative action and lives in
+**Settings** (§8's "Register Service" section), not on the landing page.
+
 
 ## 8. Settings
 
@@ -153,6 +156,13 @@ panel. Reads live from the API on open (`loadSettings()`):
   this token** unless the browser happens to be running on the node itself
   (`127.0.0.1`), in which case the server's localhost bypass applies
   regardless of what's typed here.
+- **Register Service** (`#add-service-form`): posts `name`, `port`,
+  `description`, `category`, `health_url` to `POST /api/services`. This is
+  an administrative action (AGENTS.md §2), so it lives here rather than on
+  the landing page. On success the sidebar catalogue refreshes in place —
+  no page reload — and the new service is immediately visible/openable
+  from the catalogue. Errors (missing/invalid write token, validation
+  failures) render into `#add-service-error` beside the form.
 - **Node Identity** (`#settings-identity-section`): renders `GET
   /api/settings` — name, an "enabled"/"disabled" federation badge,
   description, role, base URL, and host addresses, whichever are present.
