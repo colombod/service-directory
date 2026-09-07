@@ -766,10 +766,16 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n"
         "  }\n"
         "\n"
+        "  // Tracks whether this node has federation enabled, set by\n"
+        "  // renderIdentity() from the real /api/settings response. Both the\n"
+        "  // Federation tab (pairing) and the Peers tab gate on this so they\n"
+        "  // say so plainly and offer no peer actions when it is false.\n"
+        "  var fedEnabled = false;\n"
+        "\n"
         "  function renderIdentity(data) {\n"
         "    var el = document.getElementById('settings-identity-content');\n"
         "    if (!el) return;\n"
-        "    var fedEnabled = data.federation_enabled;\n"
+        "    fedEnabled = !!data.federation_enabled;\n"
         "    var badge = fedEnabled\n"
         "      ? '<span class=\\\"settings-badge-enabled\\\">enabled</span>'\n"
         "      : '<span class=\\\"settings-badge-disabled\\\">disabled</span>';\n"
@@ -787,13 +793,39 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "      rows.push('<dt>Addresses</dt><dd>' + addrs + '</dd>');\n"
         "    }\n"
         "    el.innerHTML = '<dl class=\\\"settings-kv\\\">' + rows.join('') + '</dl>';\n"
-        "    var pairingSec = document.getElementById('settings-pairing-section');\n"
-        "    if (pairingSec) pairingSec.style.display = fedEnabled ? '' : 'none';\n"
+        "    renderPairingGate();\n"
+        "  }\n"
+        "\n"
+        "  // The Federation tab pairing controls: when federation is off,\n"
+        "  // say so plainly instead of showing issue-code / pair actions.\n"
+        "  function renderPairingGate() {\n"
+        "    var content = document.getElementById('settings-pairing-content');\n"
+        "    if (!content) return;\n"
+        "    var subsections = content.querySelectorAll('.pairing-subsection');\n"
+        "    var notice = document.getElementById('settings-federation-disabled-notice');\n"
+        "    if (fedEnabled) {\n"
+        "      subsections.forEach(function(s) { s.hidden = false; });\n"
+        "      if (notice) notice.hidden = true;\n"
+        "    } else {\n"
+        "      subsections.forEach(function(s) { s.hidden = true; });\n"
+        "      if (!notice) {\n"
+        "        notice = document.createElement('p');\n"
+        "        notice.id = 'settings-federation-disabled-notice';\n"
+        "        notice.className = 'settings-empty';\n"
+        "        content.insertBefore(notice, content.firstChild);\n"
+        "      }\n"
+        "      notice.hidden = false;\n"
+        "      notice.textContent = 'Federation is disabled on this node. No pairing actions are available.';\n"
+        "    }\n"
         "  }\n"
         "\n"
         "  function renderPeers(peers) {\n"
         "    var el = document.getElementById('settings-peers-content');\n"
         "    if (!el) return;\n"
+        "    if (!fedEnabled) {\n"
+        "      el.innerHTML = '<p class=\\\"settings-empty\\\">Federation is disabled on this node. No peer actions are available.</p>';\n"
+        "      return;\n"
+        "    }\n"
         "    if (!peers || peers.length === 0) {\n"
         "      el.innerHTML = '<p class=\\\"settings-empty\\\">This node is not federated with any peers yet.</p>';\n"
         "      return;\n"
@@ -915,6 +947,46 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "      });\n"
         "    });\n"
         "  }\n"
+        "\n"
+        "  // ---- Lateral (vertical) settings tab rail ----\n"
+        "  // Data-driven from the DOM (role=tab / aria-controls), so adding a\n"
+        "  // future tab (e.g. an Agent chat pane) is a markup change only --\n"
+        "  // nothing here hard-codes a tab count or the current five names.\n"
+        "  function initSettingsTabs() {\n"
+        "    var tablist = document.getElementById('settings-tablist');\n"
+        "    if (!tablist) return;\n"
+        "    var tabs = Array.prototype.slice.call(\n"
+        "      tablist.querySelectorAll('[role=\\\"tab\\\"]')\n"
+        "    );\n"
+        "    if (!tabs.length) return;\n"
+        "\n"
+        "    function selectTab(tab, opts) {\n"
+        "      tabs.forEach(function(t) {\n"
+        "        var selected = t === tab;\n"
+        "        t.setAttribute('aria-selected', selected ? 'true' : 'false');\n"
+        "        t.tabIndex = selected ? 0 : -1;\n"
+        "        var panel = document.getElementById(t.getAttribute('aria-controls'));\n"
+        "        if (panel) panel.hidden = !selected;\n"
+        "      });\n"
+        "      if (!opts || opts.focus !== false) tab.focus();\n"
+        "    }\n"
+        "\n"
+        "    tabs.forEach(function(tab, idx) {\n"
+        "      tab.addEventListener('click', function() { selectTab(tab, {focus: false}); });\n"
+        "      tab.addEventListener('keydown', function(e) {\n"
+        "        var nextIdx = null;\n"
+        "        if (e.key === 'ArrowDown') nextIdx = (idx + 1) % tabs.length;\n"
+        "        else if (e.key === 'ArrowUp') nextIdx = (idx - 1 + tabs.length) % tabs.length;\n"
+        "        else if (e.key === 'Home') nextIdx = 0;\n"
+        "        else if (e.key === 'End') nextIdx = tabs.length - 1;\n"
+        "        if (nextIdx !== null) {\n"
+        "          e.preventDefault();\n"
+        "          selectTab(tabs[nextIdx]);\n"
+        "        }\n"
+        "      });\n"
+        "    });\n"
+        "  }\n"
+        "  initSettingsTabs();\n"
         "\n"
         "})();\n"
         "</script>\n"
@@ -1134,7 +1206,7 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         ".settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;\n"
         "  display: flex; align-items: flex-start; justify-content: flex-end; }\n"
         ".settings-overlay[hidden] { display: none; }\n"
-        ".settings-panel { width: 480px; max-width: 100vw; height: 100vh; overflow-y: auto;\n"
+        ".settings-panel { width: 720px; max-width: 100vw; height: 100vh; overflow-y: auto;\n"
         "  background: var(--panel); border-left: 1px solid var(--border); display: flex;\n"
         "  flex-direction: column; }\n"
         ".settings-header { display: flex; align-items: center; padding: 18px 20px 14px;\n"
@@ -1143,8 +1215,21 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         ".settings-close-btn { border: none; background: none; font-size: 22px; cursor: pointer;\n"
         "  color: var(--text-muted); padding: 0 4px; line-height: 1; }\n"
         ".settings-close-btn:hover { color: var(--text); }\n"
-        ".settings-body { flex: 1; overflow-y: auto; padding: 0; }\n"
+        "/* Lateral (vertical) tab rail -- macOS System Settings shaped */\n"
+        ".settings-body { flex: 1; overflow-y: hidden; padding: 0; display: flex;\n"
+        "  flex-direction: row; min-height: 0; }\n"
+        ".settings-tablist { display: flex; flex-direction: column; flex-shrink: 0; width: 180px;\n"
+        "  overflow-y: auto; padding: 10px; gap: 2px; border-right: 1px solid var(--border);\n"
+        "  background: var(--alt); }\n"
+        ".settings-tab { display: block; width: 100%; text-align: left; border: none;\n"
+        "  background: none; color: var(--text-muted); font-size: 13px; font-weight: 600;\n"
+        "  padding: 8px 10px; border-radius: 6px; cursor: pointer; }\n"
+        ".settings-tab:hover { background: var(--border); color: var(--text); }\n"
+        '.settings-tab[aria-selected="true"] { background: var(--accent); color: #fff; }\n'
+        ".settings-panels { flex: 1; overflow-y: auto; padding: 0; min-width: 0; }\n"
+        ".settings-tabpanel[hidden] { display: none; }\n"
         ".settings-section { padding: 18px 20px; border-bottom: 1px solid var(--border); }\n"
+        ".settings-tabpanel .settings-section:last-child { border-bottom: none; }\n"
         ".settings-section-title { margin: 0 0 12px; font-size: 12px; font-weight: 700;\n"
         "  text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }\n"
         ".settings-loading { color: var(--text-faint); font-size: 13px; }\n"
@@ -1250,42 +1335,45 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         '<button id="settings-close-btn" class="settings-close-btn" title="Close settings">&times;</button>'
         "</div>"
         '<div class="settings-body">'
-        # Write token row (reuses the existing write-token-input id)
-        '<div class="settings-section">'
-        '<h3 class="settings-section-title">Write Token</h3>'
-        '<div class="write-token-row">'
-        '<label for="write-token-input">Write token '
-        '<span class="hint">(required for mutations)</span></label> '
-        '<input type="password" id="write-token-input" '
-        'placeholder="Bearer write token (optional on localhost)" />'
+        # Lateral (vertical) tab rail -- macOS System Settings shaped.
+        # Data-driven: adding a tab is adding one <button> + one panel, not
+        # rewriting the switching JS (see settings_script's SETTINGS_TABS).
+        '<div role="tablist" aria-orientation="vertical" '
+        'class="settings-tablist" id="settings-tablist">'
+        '<button type="button" role="tab" id="settings-tab-node" '
+        'class="settings-tab" data-tab="node" '
+        'aria-controls="settings-panel-node" aria-selected="true" tabindex="0">'
+        "Node</button>"
+        '<button type="button" role="tab" id="settings-tab-federation" '
+        'class="settings-tab" data-tab="federation" '
+        'aria-controls="settings-panel-federation" aria-selected="false" tabindex="-1">'
+        "Federation</button>"
+        '<button type="button" role="tab" id="settings-tab-peers" '
+        'class="settings-tab" data-tab="peers" '
+        'aria-controls="settings-panel-peers" aria-selected="false" tabindex="-1">'
+        "Peers</button>"
+        '<button type="button" role="tab" id="settings-tab-services" '
+        'class="settings-tab" data-tab="services" '
+        'aria-controls="settings-panel-services" aria-selected="false" tabindex="-1">'
+        "Services</button>"
+        '<button type="button" role="tab" id="settings-tab-security" '
+        'class="settings-tab" data-tab="security" '
+        'aria-controls="settings-panel-security" aria-selected="false" tabindex="-1">'
+        "Security</button>"
         "</div>"
-        "</div>"
-        # Register a service (administrative action -- lives in Settings,
-        # not on the landing page; see AGENTS.md Sec 2).
-        '<div class="settings-section">'
-        '<h3 class="settings-section-title">Register Service</h3>'
-        '<form id="add-service-form" class="add-service-form">'
-        "<h2>Add service</h2>"
-        '<input type="text" name="name" placeholder="Name" required />'
-        '<input type="number" name="port" placeholder="Port" required />'
-        '<input type="text" name="description" placeholder="Description" />'
-        '<input type="text" name="category" placeholder="Category" />'
-        '<input type="text" name="health_url" placeholder="Health URL (optional)" />'
-        '<button type="submit">Add service</button>'
-        '<span id="add-service-error" class="add-service-error"></span>'
-        "</form>"
-        "</div>"
-        # Identity section (populated by JS from /api/settings)
+        # Panel area -- exactly one child is visible at a time.
+        '<div class="settings-panels" id="settings-panels">'
+        # Node panel: identity (populated by JS from /api/settings)
+        '<div role="tabpanel" id="settings-panel-node" '
+        'aria-labelledby="settings-tab-node" class="settings-tabpanel">'
         '<div class="settings-section" id="settings-identity-section">'
         '<h3 class="settings-section-title">Node Identity</h3>'
         '<div id="settings-identity-content" class="settings-loading">Loading&hellip;</div>'
         "</div>"
-        # Peers section
-        '<div class="settings-section" id="settings-peers-section">'
-        '<h3 class="settings-section-title">Trusted Peers</h3>'
-        '<div id="settings-peers-content" class="settings-loading">Loading&hellip;</div>'
         "</div>"
-        # Pairing section (only shown when federation enabled)
+        # Federation panel: pairing (issue code / redeem a peer's code)
+        '<div role="tabpanel" id="settings-panel-federation" '
+        'aria-labelledby="settings-tab-federation" class="settings-tabpanel" hidden>'
         '<div class="settings-section" id="settings-pairing-section">'
         '<h3 class="settings-section-title">Pairing</h3>'
         '<div id="settings-pairing-content">'
@@ -1309,8 +1397,49 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "</div>"
         "</div>"
         "</div>"
+        # Peers panel: trusted peers list
+        '<div role="tabpanel" id="settings-panel-peers" '
+        'aria-labelledby="settings-tab-peers" class="settings-tabpanel" hidden>'
+        '<div class="settings-section" id="settings-peers-section">'
+        '<h3 class="settings-section-title">Trusted Peers</h3>'
+        '<div id="settings-peers-content" class="settings-loading">Loading&hellip;</div>'
         "</div>"
         "</div>"
+        # Services panel: register a service (administrative action --
+        # lives in Settings, not on the landing page; see AGENTS.md Sec 2).
+        '<div role="tabpanel" id="settings-panel-services" '
+        'aria-labelledby="settings-tab-services" class="settings-tabpanel" hidden>'
+        '<div class="settings-section" id="settings-services-section">'
+        '<h3 class="settings-section-title">Register Service</h3>'
+        '<form id="add-service-form" class="add-service-form">'
+        "<h2>Add service</h2>"
+        '<input type="text" name="name" placeholder="Name" required />'
+        '<input type="number" name="port" placeholder="Port" required />'
+        '<input type="text" name="description" placeholder="Description" />'
+        '<input type="text" name="category" placeholder="Category" />'
+        '<input type="text" name="health_url" placeholder="Health URL (optional)" />'
+        '<button type="submit">Add service</button>'
+        '<span id="add-service-error" class="add-service-error"></span>'
+        "</form>"
+        "</div>"
+        "</div>"
+        # Security panel: write token (reuses the existing write-token-input id)
+        '<div role="tabpanel" id="settings-panel-security" '
+        'aria-labelledby="settings-tab-security" class="settings-tabpanel" hidden>'
+        '<div class="settings-section" id="settings-security-section">'
+        '<h3 class="settings-section-title">Write Token</h3>'
+        '<div class="write-token-row">'
+        '<label for="write-token-input">Write token '
+        '<span class="hint">(required for mutations)</span></label> '
+        '<input type="password" id="write-token-input" '
+        'placeholder="Bearer write token (optional on localhost)" />'
+        "</div>"
+        "</div>"
+        "</div>"
+        "</div>"  # end settings-panels
+        "</div>"  # end settings-body
+        "</div>"  # end settings-panel
+        "</div>"  # end settings-overlay
         + script
         + settings_script
         + "</body></html>"
