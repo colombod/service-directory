@@ -1,0 +1,249 @@
+/* ================================================================
+   AMPLIFIER DESIGN SYSTEM — TOKENS  (v1.0.0)
+   ----------------------------------------------------------------
+   Single portable file. No build step, no dependencies.
+   Load it, then set data-brand="amplifier" on <html> to opt in.
+   Generated from the Amplifier ecosystem design system project;
+   colour values are sampled from the pixels of the Amplifier mark.
+   Do not hand-edit values here — change them upstream and re-export.
+   ================================================================ */
+
+/* TYPE — no webfont is loaded by the app; the stacks below are what ships.
+   Urbanist 700 is used ONLY in the brand wordmark SVGs, never in the UI.
+   Measured scale: 13/12/11px are 83 of 125 font-size declarations (66%).
+   px, not rem — a known limitation, recorded in DESIGN_LANGUAGE §7.5. */
+:root {
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', 'Menlo', monospace;
+  /* Brand only: the wordmark and lockup SVGs set Urbanist 700. */
+  --font-brand: 'Urbanist', system-ui, sans-serif;
+
+  --text-2xs: 10px;  /* monospace tile preview; micro labels */
+  --text-xs:  11px;  /* dense metadata, badges, timestamps */
+  --text-sm:  12px;  /* secondary labels */
+  --text-md:  13px;  /* DEFAULT UI text */
+  --text-lg:  14px;  /* emphasis; terminal body */
+  --text-xl:  16px;  /* the largest size a dense tool should need */
+
+  --weight-regular: 400;
+  --weight-medium: 500;  /* tile name */
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-caps: 0.06em;  /* sidebar captions */
+  --tracking-caps-wide: 0.08em; /* device headers */
+  --leading-tight: 1;
+  --leading-preview: 1.0;   /* terminal preview lines */
+  --leading-ui: 1.4;
+}
+
+
+/* SPACE — t-shirt names, not numbers. A description of the app, not a
+   proposal for it: 8px (~75 uses), 6px (~59), 4px (~45), 12px (~24),
+   16px (~22), 2px (~11) already carry essentially all spacing in style.css.
+   The scale is deliberately NOT a strict 4px grid — 6px is the app's unit. */
+:root {
+  --space-2xs: 2px;   /* hairline nudge; optical alignment only */
+  --space-xs:  4px;   /* inside a small control */
+  --space-sm:  6px;   /* gap between related items — the app's unit */
+  --space-md:  8px;   /* gap between components; the grid gap */
+  --space-lg:  12px;  /* padding inside a panel or section */
+  --space-xl:  16px;  /* page margin; separation between regions */
+  --space-2xl: 24px;  /* rare — only to separate unrelated regions */
+}
+
+
+/* RADIUS — 4px is 52 of 83 border-radius declarations in style.css (63%).
+   8px and 12px are the only other values with real usage. */
+:root {
+  --radius-sm: 4px;     /* default. Controls, tiles, cards, inputs. */
+  --radius-md: 8px;     /* menus, popovers, dialogs */
+  --radius-lg: 12px;    /* sheets — the large mobile-anchored surfaces */
+  --radius-pill: 999px; /* badges and pills only */
+}
+
+
+/* CONTROL — the metrics that make an interactive thing feel like the same
+   interactive thing everywhere. --touch-min is adopted and non-negotiable:
+   48x48 CSS px is the one floor satisfying Apple HIG (44pt), Material
+   (48dp), WCAG 2.2 AA (24px) and WCAG 2.1 AAA (44px) at once. */
+:root {
+  --touch-min: 48px;        /* minimum hit area, any pointer. A floor. */
+  --header-height: 44px;    /* app header — visual height, not hit target */
+
+  --control-pad-y: var(--space-xs); /* 4px */
+  --control-pad-x: 10px;            /* the ONE deliberate off-scale value:
+                                       a text control gets more horizontal
+                                       than vertical inset so it reads as a
+                                       control without a box drawn round it */
+  --control-gap: var(--space-sm);   /* 6px — icon to label */
+  --focus-ring: 2px solid var(--accent);
+  --focus-ring-offset: 2px;
+}
+
+
+/* LAYOUT CONSTANTS — specific measurements of specific things, kept here
+   only so there is one place to look. */
+:root {
+  --tile-height: 300px;
+  --tile-min-width: 360px;   /* style.css overrides this inside a media query */
+  --grid-gap: var(--space-md);      /* 8px */
+  --grid-padding: var(--space-xl);  /* 16px */
+  --sidebar-width: 200px;
+  --sidebar-item-height: 120px;
+  --sidebar-gap: var(--space-md);
+  --tile-header-height: 32px;
+  --sheet-max-height: 70vh;
+  --breakpoint-mobile: 599px;
+}
+
+
+/* MOTION — durations are short because this is a monitoring tool: motion
+   confirms a state change, it never performs. style.css honours
+   prefers-reduced-motion in its own section; do not re-implement it here. */
+:root {
+  --t-fast: 150ms ease;         /* hover, focus, colour change */
+  --t-fade: 200ms ease;         /* appear / disappear */
+  --t-zoom: 250ms ease-in-out;  /* tile expand / collapse, sheet up */
+}
+
+
+/* ELEVATION — muxplex is flat. 4,077 lines of CSS contain nine box-shadows
+   and every one is on something that OVERLAPS other content.
+   Elevation is earned by overlap, never used to group or decorate. */
+:root {
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.5);   /* menus, flyouts */
+  --shadow-modal:   0 8px 32px rgba(0, 0, 0, 0.55);  /* dialogs */
+  --shadow-edge-left:  -4px 0 18px rgba(0, 0, 0, 0.45); /* right-side panel */
+  --shadow-edge-right:  2px 0 16px rgba(0, 0, 0, 0.5);  /* left-side panel */
+  --shadow-none: none;  /* everything that sits IN the layout */
+
+  /* Bell state: colour + border + inner glow together, never colour alone. */
+  --glow-bell: 0 0 0 1px var(--bell-border), inset 0 0 12px var(--bell-glow);
+}
+
+
+/* LAYER — a MEASURED ladder. Every value is a z-index style.css already
+   uses, named after the thing that uses it. Never invent a fresh integer. */
+:root {
+  --z-raised: 1;            /* in-flow, above its own siblings (device tag) */
+  --z-view-overlay: 10;     /* covers one view, not the app */
+  --z-float: 50;            /* floats over page content (session pill) */
+  --z-popover: 100;         /* toast, anchored menu */
+  --z-panel: 200;           /* full-surface panel; page still behind */
+  --z-modal-backdrop: 299;
+  --z-modal: 300;
+  --z-modal-nested: 310;    /* submenu opened from within a modal */
+  --z-hover-preview: 500;   /* known anomaly: sits above the modal */
+}
+
+
+/* ================================================================
+   AMPLIFIER APPLICATION PALETTE
+   ================================================================
+   The palette every NEW Amplifier application uses. muxplex keeps its
+   own cyan (tokens/color.css) — it shipped first and its values are
+   canonical for that app. This file is what a second, third or tenth
+   Amplifier app should look like.
+
+   PROVENANCE: sampled directly from assets/amplifier/amplifier-icon-48.png
+   (the interlocking-rings mark). The three colour families in the artwork,
+   by pixel count:
+
+     deep navy   #002880 → #003090   the innermost, densest ring
+     azure       #0888E8 → #08B0F8   the bright outer ring
+     violet      #4818C8 → #5018D0   the crossing ring
+
+   Those three ARE the brand. Everything below is either one of them or a
+   surface/ink chosen to sit under them. No fourth hue was invented.
+
+   NAMING: base values are --amp-*, so they can never collide with
+   muxplex's --bg / --accent family at a different value. The semantic
+   aliases at the bottom are remapped only inside
+   [data-brand="amplifier"], which is how an Amplifier app opts in — the
+   same scoping discipline products/service-directory.css uses, and for
+   the same reason (DESIGN_LANGUAGE.md §3.4).
+   ================================================================ */
+
+:root {
+  /* ---- brand, straight from the mark ---- */
+  --amp-navy:   #002880;  /* deep ring — headers on light, fills, charts */
+  --amp-navy-deep: #002070;
+  --amp-blue:   #0060E0;  /* mid ring — the pressed/held state of azure */
+  --amp-azure:  #08B0F8;  /* bright ring — INTERACTIVE. one accent. */
+  --amp-azure-hover: #4FC8FB;
+  --amp-violet: #5018D0;  /* crossing ring — agent + attention only */
+  --amp-violet-soft: rgba(80, 24, 208, 0.22);
+
+  /* Low-alpha state fills, derived from the two accents. */
+  --amp-azure-dim:  rgba(8, 176, 248, 0.15);
+  --amp-azure-edge: rgba(8, 176, 248, 0.55);
+  --amp-violet-dim: rgba(80, 24, 208, 0.20);
+  --amp-violet-edge: rgba(80, 24, 208, 0.65);
+
+  /* ---- surfaces: a navy-tinted three-step ladder ----
+     Tinted toward --amp-navy rather than neutral grey, so the mark and
+     the accent sit on a ground of the same family. Higher = nearer. */
+  --amp-page:    #0A0E18;
+  --amp-raised:  #101728;  /* tiles, panels, menus, dialogs */
+  --amp-hover:   #18213A;  /* raised within a surface; hover fills */
+  --amp-scrim:   rgba(10, 14, 24, 0.86);
+  --amp-content: #05070C;  /* content wells: terminals, logs, previews */
+
+  /* ---- lines ---- */
+  --amp-line:        #232D45;
+  --amp-line-subtle: #192036;
+  --amp-line-strong: #33406A;
+
+  /* ---- ink: three tiers, and only three ---- */
+  --amp-ink:       #EDF2FF;  /* primary   ~16.8:1 on --amp-page */
+  --amp-ink-muted: #8B95AD;  /* secondary  ~6.4:1 on --amp-page — AA */
+  --amp-ink-dim:   #4A5470;  /* decorative — never the only signal */
+  --amp-ink-on-accent: #041018; /* on azure fills */
+
+  /* ---- signal: status, never decoration ----
+     Green/amber/red are not brand colours; they are shared with muxplex
+     deliberately so a status reads identically across the ecosystem. */
+  --amp-ok:   #3fb950;
+  --amp-warn: #d29922;
+  --amp-err:  #f85149;
+}
+
+/* An Amplifier application opts in by scoping its root element.
+   Inside this scope the component primitives read Amplifier values. */
+[data-brand="amplifier"] {
+  color-scheme: dark;
+
+  --bg: var(--amp-page);
+  --bg-secondary: var(--amp-raised);
+  --bg-header: var(--amp-page);
+  --bg-surface: var(--amp-hover);
+  --bg-overlay: var(--amp-scrim);
+  --bg-tile: var(--amp-raised);
+  --bg-tile-hover: var(--amp-hover);
+
+  --text: var(--amp-ink);
+  --text-muted: var(--amp-ink-muted);
+  --text-dim: var(--amp-ink-dim);
+
+  --border: var(--amp-line);
+  --border-subtle: var(--amp-line-subtle);
+
+  --accent: var(--amp-azure);
+  --accent-hover: var(--amp-azure-hover);
+  --accent-dim: var(--amp-azure-dim);
+
+  --ok: var(--amp-ok);
+  --warn: var(--amp-warn);
+  --err: var(--amp-err);
+
+  /* Attention is VIOLET here, not amber: it is the mark's third ring, and
+     it keeps "something wants you" distinct from "something is wrong"
+     (--warn) without introducing a colour the brand does not contain. */
+  --bell: var(--amp-violet);
+  --bell-glow: var(--amp-violet-soft);
+  --bell-border: var(--amp-violet-edge);
+
+  --terminal-bg: var(--amp-content);
+  --terminal-fg: #c9d1d9;
+}

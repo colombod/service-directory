@@ -184,3 +184,8 @@ Settings is read-only until a write token is supplied for anything that
 mutates state — this matches AGENTS.md's rule that Settings is the home for
 node/fleet management, and that every mutation needs the existing write
 token.
+
+Settings sections are designed against `design-system/example/` — federation
+setup and Amplifier agent integration each have a reference page there, both
+following the same shape: steps in working order, copyable config, and a
+verification checklist of observable state rather than a success banner.

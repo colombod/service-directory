@@ -64,7 +64,10 @@ new top-level page.
 - **Single self-contained page.** All CSS/JS inline. No build step, no CDN, no
   npm, no external assets. Plain inline JS.
 - **Match the existing design system** — same tokens, spacing, and type scale as
-  `_render_html`. It must read as one product.
+  `_render_html`. The values and the component rules are written down in
+  `design-system/` (start with `design-system/AGENTS.md`); the reference pages
+  in `design-system/example/` are the shape to copy. It must read as one
+  product.
 - **Preserve existing DOM hooks** that JS and tests depend on: `service-filter`,
   `section.node-group[data-origin]`, `tr.service[data-name]`/`[data-search]`,
   `[data-view-url]`/`[data-view-kind]`, `svc-table`, `health-pill`/`health-dot`,

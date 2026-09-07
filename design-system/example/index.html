@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amplifier Design System — reference</title>
+<link rel="icon" href="../assets/amplifier-icon-32.png">
+<link rel="stylesheet" href="../amplifier.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { overflow: hidden; }
+  /* Page-local only: this file demonstrates two states side by side. */
+  .demo { position: relative; height: 100vh; }
+</style>
+</head>
+<body>
+<div class="demo">
+  <div class="amp-app">
+    <header class="amp-header">
+      <img class="amp-header__mark" src="../assets/amplifier-icon-32.png" alt="Amplifier">
+      <span class="amp-header__name">Reference app</span>
+      <button class="amp-link" type="button">Recent &#9662;</button>
+      <div class="amp-filter">
+        <input class="amp-filter__input" type="search" placeholder="Filter">
+      </div>
+      <div class="amp-header__spacer"></div>
+      <span style="display:inline-flex;align-items:center;gap:var(--space-sm);font-size:var(--text-xs);color:var(--amp-violet)">
+        <span class="amp-badge amp-badge--sm">2</span>runs need you
+      </span>
+      <button class="amp-btn amp-btn--agent" type="button" aria-pressed="true">
+        <img src="../assets/amplifier-icon-32.png" alt="" width="16" height="16">Agent
+      </button>
+    </header>
+
+    <div class="amp-body">
+      <nav class="amp-rail" aria-label="Runs">
+        <div class="amp-rail__head">
+          <div class="amp-filter amp-filter--wide">
+            <input class="amp-filter__input" type="search" placeholder="Filter">
+          </div>
+        </div>
+        <div class="amp-rail__list">
+          <div class="amp-row" aria-selected="true" tabindex="0">
+            <div style="display:flex;align-items:center;gap:var(--space-sm)">
+              <span class="amp-row__name">ingest-nightly</span>
+            </div>
+            <div class="amp-row__meta">
+              <span class="amp-status amp-status--active">running</span><span>4m elapsed</span>
+            </div>
+          </div>
+          <div class="amp-row" data-attention tabindex="0">
+            <div style="display:flex;align-items:center;gap:var(--space-sm)">
+              <span class="amp-badge amp-badge--sm">2</span>
+              <span class="amp-row__name">schema-migrate</span>
+            </div>
+            <div class="amp-row__meta">
+              <span class="amp-status amp-status--attention">needs input</span><span>waiting 12m</span>
+            </div>
+          </div>
+          <div class="amp-row" tabindex="0">
+            <div style="display:flex;align-items:center;gap:var(--space-sm)">
+              <span class="amp-row__name">index-rebuild</span>
+            </div>
+            <div class="amp-row__meta">
+              <span class="amp-status amp-status--dim">idle</span><span>ran 2h ago</span>
+            </div>
+          </div>
+          <div class="amp-row" tabindex="0">
+            <div style="display:flex;align-items:center;gap:var(--space-sm)">
+              <span class="amp-row__name">export-parquet</span>
+            </div>
+            <div class="amp-row__meta">
+              <span class="amp-status amp-status--err">failed</span><span>exit 1 &middot; 40m ago</span>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <section class="amp-detail">
+        <div class="amp-detail__head">
+          <h1 class="amp-detail__title">ingest-nightly</h1>
+          <span class="amp-status amp-status--active"><span class="amp-dot amp-dot--live"></span> running</span>
+          <div class="amp-header__spacer"></div>
+          <button class="amp-link" type="button">Logs</button>
+          <button class="amp-btn" type="button">Cancel</button>
+          <button class="amp-btn amp-btn--primary" type="button">Re-run</button>
+        </div>
+        <div class="amp-detail__body" style="display:flex;flex-direction:column;gap:var(--space-lg)">
+          <div class="amp-panel">
+            <table class="amp-kv">
+              <tr><th scope="row">Source</th><td>s3://amplifier-raw/2026-09-07/</td></tr>
+              <tr><th scope="row">Started</th><td>2026-09-07 04:00:12Z</td></tr>
+              <tr><th scope="row">Worker</th><td>node-7 &middot; 8 vCPU</td></tr>
+              <tr><th scope="row">Rows</th><td>1,284,551</td></tr>
+            </table>
+          </div>
+          <pre class="amp-well">04:00:12  start ingest-nightly
+04:00:13  connected s3://amplifier-raw
+04:02:41  batch 128/512 ok
+04:04:09  batch 256/512 ok
+04:06:55  batch 384/512 ok  (rate 4.2k/s)</pre>
+        </div>
+      </section>
+
+      <aside class="amp-agent" aria-label="Amplifier Agent">
+        <div class="amp-agent__head">
+          <img src="../assets/amplifier-icon-32.png" alt="" width="16" height="16">
+          <span class="amp-header__name">Agent</span>
+          <div class="amp-header__spacer"></div>
+          <button class="amp-link" type="button">&times;</button>
+        </div>
+        <div class="amp-agent__body">
+          <div class="amp-msg amp-msg--user">Why is export-parquet failing?</div>
+          <div class="amp-msg amp-msg--agent">The last three runs exited 1 on the same partition
+            (<code>dt=2026-09-05</code>). The column <code>amount</code> arrives as a string there.
+            Re-running won't help until the cast is fixed.</div>
+        </div>
+        <div class="amp-agent__foot">
+          <div class="amp-filter amp-filter--wide">
+            <input class="amp-filter__input" placeholder="Ask the agent">
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="amp-toast">
+    <span class="amp-status amp-status--ok">&#10003;</span> Re-run queued
+  </div>
+</div>
+
+<!-- The overview state (tile grid) uses the same header + this body:
+<div class="amp-overview">
+  <div class="amp-grid">
+        <article class="amp-tile" tabindex="0">
+          <div class="amp-tile__header">
+            <span class="amp-tile__name">ingest-nightly</span>
+            <span class="amp-status amp-status--active">running</span>
+          </div>
+          <p class="amp-tile__summary">Nightly raw &rarr; warehouse load.</p>
+          <div class="amp-tile__well">
+            <pre class="amp-tile__preview">04:06:55  batch 384/512 ok</pre>
+            <span class="amp-tile__chip">node-7</span>
+          </div>
+        </article>
+        <article class="amp-tile" data-attention tabindex="0">
+          <div class="amp-tile__header">
+            <span class="amp-badge">2</span>
+            <span class="amp-tile__name">schema-migrate</span>
+            <span class="amp-status amp-status--attention">needs input</span>
+          </div>
+          <p class="amp-tile__summary">Column type change awaiting approval.</p>
+          <div class="amp-tile__well">
+            <pre class="amp-tile__preview">! confirm cast amount::numeric</pre>
+            <span class="amp-tile__chip">node-2</span>
+          </div>
+        </article>
+  </div>
+</div>
+-->
+</body>
+</html>
