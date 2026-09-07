@@ -1,0 +1,55 @@
+<!-- @dsCard group="Components" viewport="700x330" name="muxplex sessions" subtitle="SessionTile states, SidebarItem, SessionPill, FilterPill" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text); font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:center; }
+  .col { display:flex; flex-direction:column; gap:var(--space-sm); }
+  .lbl { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.06em; }
+  .ql { display:flex; align-items:center; gap:6px; padding:4px 10px; background:transparent; border:none; border-radius:4px; color:var(--accent); font-size:13px; font-family:var(--font-ui); cursor:pointer; }
+  .ql--hover { color:var(--accent-hover); }
+  .ql--focus { color:var(--accent-hover); outline:2px solid var(--accent); outline-offset:2px; }
+  .hbtn { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:transparent; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); font-size:13px; font-family:var(--font-ui); cursor:pointer; }
+  .hbtn--hover { border-color:var(--accent); color:var(--accent); }
+  .hbtn--commit { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+  .fin { font-size:13px; font-family:var(--font-ui); color:var(--text); background:var(--bg-surface); border:1px solid var(--border); border-radius:4px; padding:4px 24px 4px 10px; max-width:140px; }
+  .badge { display:inline-flex; align-items:center; justify-content:center; font-size:11px; line-height:1.4; padding:2px 4px; border-radius:999px; }
+  
+  .tile { height:150px; background:var(--bg-tile); border:1px solid var(--border); border-left:3px solid var(--border); border-radius:4px; display:flex; flex-direction:column; overflow:hidden; position:relative; }
+  .tile-h { height:32px; padding:0 10px; background:var(--bg-header); border-bottom:1px solid var(--border-subtle); display:flex; align-items:center; gap:4px; }
+  .tile-n { font-size:13px; font-weight:500; color:var(--text); flex:1; }
+  .tile-m { font-size:11px; color:var(--text-muted); }
+  .tile-b { flex:1; position:relative; background:#000; overflow:hidden; }
+  .tile-b pre { position:absolute; bottom:0; left:0; right:0; margin:0; padding:6px 8px; font-family:var(--font-mono); font-size:11px; line-height:1; color:#c9d1d9; white-space:pre; }
+  .tag { position:absolute; right:6px; bottom:4px; padding:1px 5px; border:1px solid var(--border-subtle); border-radius:3px; background:var(--bg-header); color:var(--text-muted); font-size:10px; line-height:1.4; }
+  .pill { display:inline-flex; align-items:center; gap:6px; background:var(--bg-header); border:1px solid var(--border); border-radius:20px; padding:8px 14px; font-size:13px; color:var(--text-muted); box-shadow:0 4px 12px rgba(0,0,0,.4); opacity:.75; }
+  .fp { font-size:12px; border-radius:14px; border:1px solid var(--border); background:transparent; color:var(--text-muted); padding:3px 10px; line-height:1.4; }
+  .fp--on { border-color:var(--accent); background:var(--accent-dim); color:var(--accent); font-weight:700; }
+
+</style></head>
+<body>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div class="tile"><div class="tile-h"><span class="tile-n">api</span><span class="tile-m">3w &middot; 2m</span></div><div class="tile-b"><pre>$ uv run pytest -q
+....................
+42 passed in 3.10s
+$ </pre><span class="tag">macbook</span></div></div>
+    <div class="tile" style="border-color:var(--accent);border-left-color:var(--accent)"><div class="tile-h"><span class="tile-n">web</span></div><div class="tile-b"><pre>vite v5.4.2 ready in 402 ms
+&#8594; http://localhost:5173/
+</pre></div></div>
+    <div class="tile" style="border-color:var(--bell-border);border-left-color:var(--bell);box-shadow:0 0 0 1px var(--bell-border), inset 0 0 12px var(--bell-glow)">
+      <div class="tile-h"><span style="min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--bell);color:#0D1117;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-right:6px">2</span><span class="tile-n">deploy</span></div>
+      <div class="tile-b"><pre>? Proceed with release 0.48.0 (y/N)
+</pre></div></div>
+  </div>
+  <div class="row" style="margin-top:10px;align-items:flex-start">
+    <div style="width:190px;display:flex;flex-direction:column;gap:8px">
+      <h4 style="margin:0;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);padding:0 12px">macbook</h4>
+      <div class="tile" style="height:88px;background:var(--bg-surface);border-color:var(--accent);border-left-color:var(--accent)"><div class="tile-h" style="height:32px;padding:8px 8px 4px;background:transparent;border:none"><span class="tile-n" style="font-size:12px;font-weight:600">api</span></div><div class="tile-b"><pre style="font-size:10px">42 passed in 3.10s</pre></div></div>
+    </div>
+    <div class="col" style="flex:1">
+      <div class="row"><span class="fp fp--on">bell</span><span class="fp">active</span><span class="fp">idle</span><span class="fp">all</span></div>
+      <span class="pill"><span style="color:var(--bell)">&#9679;</span>deploy</span>
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,47 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Service Directory settings" subtitle="SettingsPanel, SettingsSection, KeyValueList, PeerItem, PairingCode" -->
+<!DOCTYPE html>
+<html lang="en" data-product="service-directory"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html,body { margin:0; }
+  body { padding:14px 16px; background:var(--bg); color:var(--text); font:14px/1.5 var(--font-ui); }
+  .lbl { font-size:10px; color:var(--text-faint); font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:4px; text-transform:capitalize; }
+  .lb { font-family:var(--mono); font-size:11px; font-weight:600; padding:3px 8px; border-radius:5px; display:inline-block; text-decoration:none; }
+</style></head>
+<body data-product="service-directory" style="padding:0">
+  <div style="width:100%;background:var(--panel);border-left:1px solid var(--border)">
+    <div style="display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border)">
+      <h2 style="margin:0;font-size:16px;font-weight:700;flex:1">Settings</h2>
+      <span style="color:var(--text-muted);font-size:22px;line-height:1">&times;</span>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">Node Identity</h3>
+      <dl style="display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:13px;margin:0">
+        <dt style="color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Name</dt><dd style="margin:0">node-a</dd>
+        <dt style="color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Federation</dt><dd style="margin:0;color:var(--up);font-weight:600">enabled</dd>
+        <dt style="color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Base URL</dt><dd style="margin:0;word-break:break-all">http://100.111.191.22:80</dd>
+      </dl>
+    </div>
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+      <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">Trusted Peers</h3>
+      <ul style="list-style:none;margin:0;padding:0">
+        <li style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span style="font-weight:600;flex:1">node-b</span>
+          <span style="color:var(--text-muted);font-size:11px;font-family:var(--mono)">http://100.111.191.8:80</span>
+          <span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;color:var(--up);background:var(--up-bg)">reachable</span>
+          <button style="border:none;background:none;color:var(--text-faint);font-size:16px;line-height:1">&times;</button>
+        </li>
+      </ul>
+    </div>
+    <div style="padding:14px 20px">
+      <h3 style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">Pairing</h3>
+      <button style="padding:8px 16px;font-size:13px;font-weight:600;color:#fff;background:var(--accent);border:none;border-radius:7px">Issue pairing code</button>
+      <div style="margin-top:10px;padding:10px 14px;background:var(--alt);border:1px solid var(--border-strong);border-radius:7px;font-size:13px">
+        <span style="font-family:var(--mono);font-weight:700;font-size:15px;color:var(--accent);letter-spacing:.05em">4KQ2-9XPD</span>
+        <div style="color:var(--text-faint);font-size:11px;margin-top:4px">Expires in 600s (one-time use)</div>
+      </div>
+    </div>
+  </div>
+</body></html>

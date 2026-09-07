@@ -2,12 +2,25 @@
 
 Rules for writing UI in this repo. Read before generating markup or CSS.
 
+Where to look things up:
+
+| Question | Look in |
+|---|---|
+| What is this value / why | `guidelines/*.card.html` (22 cards) |
+| The raw values | `tokens/*.css` |
+| A component's props + intent | `components/<surface>/<Name>.prompt.md` + `.d.ts` |
+| What a whole screen looks like | `example/`, then `ui_kits/` |
+| Principles, copywriting, content rules | `README.md` |
+
 ## Non-negotiable
 
-1. **Load `amplifier.css` and set `data-brand="amplifier"` on the root element.**
-   Never copy token values into a component; reference the variable.
+1. **Load `dist/amplifier.css` (or `styles.css` + your own component CSS) and set
+   `data-brand="amplifier"` on the root element.** Never copy token values into a
+   component; reference the variable.
 2. **No new numbers.** If a size, colour, radius, duration or z-index is not in
-   `amplifier.tokens.css`, it does not exist. Compose from what is there.
+   `tokens/`, it does not exist. Compose from what is there. When you are unsure
+   what a value is *for*, open the matching card in `guidelines/` — every token
+   family has one.
 3. **No new colours.** Azure is interactive, violet is agent/attention,
    green/amber/red are status. That's the whole palette. Never use amber for
    "needs attention" and never use violet for an error.

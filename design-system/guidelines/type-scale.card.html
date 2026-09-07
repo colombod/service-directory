@@ -1,0 +1,17 @@
+<!-- @dsCard group="Type" viewport="700x230" name="Size scale" subtitle="Measured: 13/12/11px are 66% of the app. 13px is the real base" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div style="display:grid;gap:6px">
+    <div style="display:flex;align-items:baseline;gap:12px"><span class="lbl" style="width:88px">--text-2xs</span><span style="font-size:10px;color:var(--text)">Aa 10px</span><span class="val">micro labels, preview</span></div><div style="display:flex;align-items:baseline;gap:12px"><span class="lbl" style="width:88px">--text-xs</span><span style="font-size:11px;color:var(--text)">Aa 11px</span><span class="val">dense metadata, badges</span></div><div style="display:flex;align-items:baseline;gap:12px"><span class="lbl" style="width:88px">--text-sm</span><span style="font-size:12px;color:var(--text)">Aa 12px</span><span class="val">secondary labels</span></div><div style="display:flex;align-items:baseline;gap:12px"><span class="lbl" style="width:88px">--text-md</span><span style="font-size:13px;color:var(--text)">Aa 13px</span><span class="val">DEFAULT UI text</span></div><div style="display:flex;align-items:baseline;gap:12px"><span class="lbl" style="width:88px">--text-lg</span><span style="font-size:14px;color:var(--text)">Aa 14px</span><span class="val">emphasis, terminal body</span></div><div style="display:flex;align-items:baseline;gap:12px"><span class="lbl" style="width:88px">--text-xl</span><span style="font-size:16px;color:var(--text)">Aa 16px</span><span class="val">largest a dense tool needs</span></div>
+  </div></body></html>

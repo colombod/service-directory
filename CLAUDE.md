@@ -8,9 +8,13 @@ session needs up front.
 
 ## Before writing any UI
 
-Read `design-system/AGENTS.md`. Use the `.amp-*` classes and the tokens; don't
-invent colours or sizes. The pages in `design-system/example/` are the shape to
-copy.
+Read `design-system/AGENTS.md`. Values come from `design-system/tokens/`; look
+anything visual up in `design-system/guidelines/` before inventing it. The pages
+in `design-system/example/` are the shape to copy, and `design-system/ui_kits/`
+has working kits for each product surface.
+
+The folder carries its own `SKILL.md`, so it is also invocable as a skill by
+name (`amplifier-design`) outside this repo.
 
 `design-system/` is documentation and reference markup, not a runtime
 dependency. The dashboard stays a single self-contained page and keeps inlining

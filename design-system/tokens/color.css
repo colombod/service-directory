@@ -1,0 +1,52 @@
+/* COLOUR — restated verbatim from muxplex/frontend/tokens.css §1
+   (bkrabach/muxplex@main). Dark is the only theme that ships.
+   The palette agrees with assets/branding/DESIGN-SYSTEM.md; only the names
+   differ, and these shipped short names are canonical. */
+:root {
+  /* Surfaces — a three-step luminance ladder. Higher = nearer the eye. */
+  --bg: #0D1117;            /* page */
+  --bg-secondary: #10131C;  /* tiles, panels, menus, dialogs */
+  --bg-header: #0D1117;     /* header matches the page, on purpose */
+  --bg-surface: #1A1F2B;    /* raised within a surface; hover fills */
+  --bg-overlay: rgba(13, 17, 23, 0.85); /* scrim over the page */
+
+  /* Text — three tiers, and only three. */
+  --text: #F0F6FF;          /* primary   17.4:1 on --bg */
+  --text-muted: #8E95A3;    /* secondary  6.3:1 on --bg — AA */
+  --text-dim: #4A5060;      /* disabled   2.4:1 — decorative only, never
+                               the sole carrier of meaning */
+
+  /* Lines — decorative separation, never the sole signal. */
+  --border: #2A3040;
+  --border-subtle: #1E2430;
+
+  /* Accent — one colour, meaning "this is interactive". */
+  --accent: #00D9F5;
+  --accent-hover: #00b8d1;
+  --accent-dim: rgba(0, 217, 245, 0.15);
+
+  /* Signal — status only. Never used to decorate a surface. */
+  --ok: #3fb950;
+  --warn: #d29922;
+  --err: #f85149;
+
+  /* Attention (bell / activity). */
+  --bell: #F1A640;
+  --bell-glow: rgba(241, 166, 64, 0.25);
+  --bell-border: rgba(241, 166, 64, 0.6);
+
+  /* Terminal content, for preview surfaces. */
+  --terminal-bg: #000000;
+  --terminal-fg: #c9d1d9;   /* matches xterm.js foreground */
+
+  /* DEPRECATED ALIASES — kept at identical values because live rules read
+     them. Migrate call sites to --bell / --bg-secondary, then delete. */
+  --bell-color: var(--bell);
+  --activity-color: var(--bell);
+  --bg-tile: var(--bg-secondary);
+  --bg-tile-hover: var(--bg-surface);
+
+  /* NOT DEFINED, ON PURPOSE: --warning and --danger. style.css reads both
+     via inline fallbacks and two different reds ship under one name.
+     Defining them here would silently repaint call sites. Use --warn / --err. */
+}

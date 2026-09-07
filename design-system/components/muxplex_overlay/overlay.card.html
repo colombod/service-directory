@@ -1,0 +1,59 @@
+<!-- @dsCard group="Components" viewport="700x300" name="muxplex overlays" subtitle="Toast, Menu, Modal, BottomSheet — the only shadowed things" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text); font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:center; }
+  .col { display:flex; flex-direction:column; gap:var(--space-sm); }
+  .lbl { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.06em; }
+  .ql { display:flex; align-items:center; gap:6px; padding:4px 10px; background:transparent; border:none; border-radius:4px; color:var(--accent); font-size:13px; font-family:var(--font-ui); cursor:pointer; }
+  .ql--hover { color:var(--accent-hover); }
+  .ql--focus { color:var(--accent-hover); outline:2px solid var(--accent); outline-offset:2px; }
+  .hbtn { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:transparent; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); font-size:13px; font-family:var(--font-ui); cursor:pointer; }
+  .hbtn--hover { border-color:var(--accent); color:var(--accent); }
+  .hbtn--commit { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+  .fin { font-size:13px; font-family:var(--font-ui); color:var(--text); background:var(--bg-surface); border:1px solid var(--border); border-radius:4px; padding:4px 24px 4px 10px; max-width:140px; }
+  .badge { display:inline-flex; align-items:center; justify-content:center; font-size:11px; line-height:1.4; padding:2px 4px; border-radius:999px; }
+  
+  .menu { min-width:180px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-popover); padding:4px 0; }
+  .mi { display:block; width:100%; text-align:left; padding:6px 12px; background:transparent; border:none; color:var(--text); font-size:13px; font-family:var(--font-ui); }
+  .mi--hover { background:var(--accent-dim); }
+  .mi--err { color:var(--err); }
+  .dlg { background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-modal); overflow:hidden; }
+  .dlg-h { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid var(--border-subtle); }
+  .sheet { background:var(--bg-header); border-top:1px solid var(--border); border-radius:12px 12px 0 0; overflow:hidden; }
+  .si { display:flex; align-items:center; gap:10px; padding:0 16px; height:44px; font-size:14px; color:var(--text); border-bottom:1px solid var(--border-subtle); }
+
+</style></head>
+<body>
+  <div class="row" style="align-items:flex-start;gap:14px">
+    <div class="col">
+      <span class="lbl">Menu &middot; --z-popover</span>
+      <div class="menu">
+        <button class="mi">Rename session</button>
+        <button class="mi mi--hover">Open in terminal</button>
+        <button class="mi mi--err">Kill session</button>
+      </div>
+    </div>
+    <div class="col" style="flex:1">
+      <span class="lbl">Modal &middot; --z-modal</span>
+      <div class="dlg">
+        <div class="dlg-h"><h2 style="margin:0;font-size:14px;font-weight:600">Settings</h2><span style="color:var(--text-muted);font-size:16px;line-height:1">&times;</span></div>
+        <div style="padding:12px;display:flex;flex-direction:column;gap:6px">
+          <label style="font-size:12px;color:var(--text-muted)">Bell sound</label>
+          <input class="fin" value="off" style="max-width:none">
+        </div>
+      </div>
+      <span class="lbl" style="margin-top:6px">BottomSheet &middot; --z-panel</span>
+      <div class="sheet">
+        <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:10px auto 6px"></div>
+        <div class="si"><span style="color:var(--bell)">&#9679;</span><span style="flex:1">deploy</span><span style="font-size:12px;color:var(--text-dim)">2m</span></div>
+        <div class="si"><span style="flex:1">api</span><span style="font-size:12px;color:var(--text-dim)">14m</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;justify-content:center">
+    <div style="background:var(--bg-header);border:1px solid var(--border);border-radius:4px;padding:8px 16px;font-size:13px;color:var(--text-muted)">Session created</div>
+  </div>
+</body></html>

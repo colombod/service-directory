@@ -1,0 +1,53 @@
+<!-- @dsCard group="Components" viewport="700x210" name="muxplex core" subtitle="QuickLink, HeaderButton, FilterInput, Field, Surface, Badge" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text); font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:center; }
+  .col { display:flex; flex-direction:column; gap:var(--space-sm); }
+  .lbl { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.06em; }
+  .ql { display:flex; align-items:center; gap:6px; padding:4px 10px; background:transparent; border:none; border-radius:4px; color:var(--accent); font-size:13px; font-family:var(--font-ui); cursor:pointer; }
+  .ql--hover { color:var(--accent-hover); }
+  .ql--focus { color:var(--accent-hover); outline:2px solid var(--accent); outline-offset:2px; }
+  .hbtn { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:transparent; border:1px solid var(--border); border-radius:4px; color:var(--text-muted); font-size:13px; font-family:var(--font-ui); cursor:pointer; }
+  .hbtn--hover { border-color:var(--accent); color:var(--accent); }
+  .hbtn--commit { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
+  .fin { font-size:13px; font-family:var(--font-ui); color:var(--text); background:var(--bg-surface); border:1px solid var(--border); border-radius:4px; padding:4px 24px 4px 10px; max-width:140px; }
+  .badge { display:inline-flex; align-items:center; justify-content:center; font-size:11px; line-height:1.4; padding:2px 4px; border-radius:999px; }
+  
+</style></head>
+<body>
+  <div class="col">
+    <div class="row">
+      <span class="lbl" style="width:96px">QuickLink</span>
+      <button class="ql">Grid &#9662;</button>
+      <button class="ql ql--hover">hover / expanded</button>
+      <button class="ql ql--focus">focus-visible</button>
+      <span style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">Sort</span><button class="ql">Recent activity</button></span>
+    </div>
+    <div class="row">
+      <span class="lbl" style="width:96px">HeaderButton</span>
+      <button class="hbtn">Settings</button>
+      <button class="hbtn hbtn--hover">hover</button>
+      <button class="hbtn"><img src="../../assets/amplifier/amplifier-icon-32.png" alt="" width="16" height="16">Agent</button>
+      <button class="hbtn hbtn--commit">Send</button>
+    </div>
+    <div class="row">
+      <span class="lbl" style="width:96px">FilterInput</span>
+      <input class="fin" placeholder="Filter">
+      <span style="position:relative;display:inline-flex;align-items:center"><input class="fin" value="build"><span style="position:absolute;right:6px;color:var(--text-muted);font-size:15px;line-height:1">&times;</span></span>
+      <span class="lbl">Badge</span>
+      <span class="badge" style="color:var(--accent);background:var(--accent-dim);border:1px solid var(--accent)">macbook</span>
+      <span class="badge" style="color:#0D1117;background:var(--bell);font-weight:700;border-radius:4px">3</span>
+      <span class="badge" style="color:var(--text-muted);border:1px solid var(--border)">idle</span>
+    </div>
+    <div class="row" style="align-items:flex-start">
+      <span class="lbl" style="width:96px">Surface / Field</span>
+      <div style="flex:1;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:6px">
+        <label style="font-size:12px;color:var(--text-muted)">Preview zoom</label>
+        <input class="fin" value="100%" style="max-width:none">
+      </div>
+    </div>
+  </div>
+</body></html>

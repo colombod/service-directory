@@ -1,4 +1,0 @@
-/* Amplifier Design System v1.0.0 — entry point.
-   Load this one file, then set data-brand="amplifier" on your root element. */
-@import "amplifier.tokens.css";
-@import "amplifier.components.css";

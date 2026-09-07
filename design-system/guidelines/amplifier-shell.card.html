@@ -1,0 +1,45 @@
+<!-- @dsCard group="Amplifier" viewport="700x300" name="The app shell pattern" subtitle="Overview tiles → pick one → list on the left, work on the right" -->
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--amp-page); color:var(--amp-ink);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; flex:1; min-width:88px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--amp-line); }
+  .lbl { font-size:var(--text-xs); color:var(--amp-ink-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--amp-ink-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--amp-ink-dim); margin-top:10px; }
+</style></head>
+<body data-brand="amplifier" style="padding:12px 14px">
+  <div class="row" style="gap:14px;align-items:stretch">
+    <div style="flex:1">
+      <span class="lbl">1 · OVERVIEW</span>
+      <div style="margin-top:6px;border:1px solid var(--amp-line);border-radius:4px;overflow:hidden">
+        <div style="height:22px;background:var(--amp-page);border-bottom:1px solid var(--amp-line);display:flex;align-items:center;gap:6px;padding:0 8px">
+          <img src="../assets/amplifier/amplifier-icon-32.png" alt="" width="10" height="10"><span class="val">app name</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;background:var(--amp-page)">
+          <div style="height:52px;background:var(--amp-raised);border:1px solid var(--amp-line);border-left:3px solid var(--amp-line);border-radius:4px"></div><div style="height:52px;background:var(--amp-raised);border:1px solid var(--amp-violet-edge);border-left:3px solid var(--amp-violet);border-radius:4px"></div><div style="height:52px;background:var(--amp-raised);border:1px solid var(--amp-line);border-left:3px solid var(--amp-line);border-radius:4px"></div><div style="height:52px;background:var(--amp-raised);border:1px solid var(--amp-line);border-left:3px solid var(--amp-line);border-radius:4px"></div>
+        </div>
+      </div>
+      <p class="note">Every item is a tile of equal weight. Density is the feature.</p>
+    </div>
+    <div style="flex:1">
+      <span class="lbl">2 · FOCUSED</span>
+      <div style="margin-top:6px;border:1px solid var(--amp-line);border-radius:4px;overflow:hidden">
+        <div style="height:22px;background:var(--amp-page);border-bottom:1px solid var(--amp-line);display:flex;align-items:center;gap:6px;padding:0 8px">
+          <img src="../assets/amplifier/amplifier-icon-32.png" alt="" width="10" height="10"><span class="val">app name</span>
+        </div>
+        <div style="display:flex;background:var(--amp-page);height:126px">
+          <div style="width:34%;border-right:1px solid var(--amp-line-subtle);background:var(--amp-raised);padding:6px;display:flex;flex-direction:column;gap:5px">
+            <div style="height:26px;border-radius:3px;background:var(--amp-hover);border:1px solid var(--amp-azure);border-left:3px solid var(--amp-azure)"></div><div style="height:26px;border-radius:3px;background:transparent;border:1px solid var(--amp-line);border-left:3px solid var(--amp-line)"></div><div style="height:26px;border-radius:3px;background:transparent;border:1px solid var(--amp-line);border-left:3px solid var(--amp-line)"></div>
+          </div>
+          <div style="flex:1;background:var(--amp-content)"></div>
+        </div>
+      </div>
+      <p class="note">The same list, condensed to a rail; the selection keeps its azure edge.</p>
+    </div>
+  </div>
+</body></html>

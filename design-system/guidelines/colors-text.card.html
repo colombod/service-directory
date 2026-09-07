@@ -1,0 +1,20 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Text tiers" subtitle="Three tiers, and only three — with measured contrast on --bg" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div class="row">
+    <div class="sw" style="flex:1"><div class="chipbox" style="background:var(--bg);display:flex;align-items:center;padding:0 10px;color:#F0F6FF;font-size:14px">Primary text</div><span class="lbl">--text · #F0F6FF</span><span class="val">17.4:1 on --bg</span></div>
+    <div class="sw" style="flex:1"><div class="chipbox" style="background:var(--bg);display:flex;align-items:center;padding:0 10px;color:#8E95A3;font-size:14px">Secondary text</div><span class="lbl">--text-muted · #8E95A3</span><span class="val">6.3:1 — AA</span></div>
+    <div class="sw" style="flex:1"><div class="chipbox" style="background:var(--bg);display:flex;align-items:center;padding:0 10px;color:#4A5060;font-size:14px">Disabled text</div><span class="lbl">--text-dim · #4A5060</span><span class="val">2.4:1 — decorative only</span></div>
+  </div>
+  <p class="note">--text-dim is decorative by construction. Colour is never the sole carrier of meaning.</p></body></html>

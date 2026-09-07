@@ -1,0 +1,13 @@
+/* ELEVATION — muxplex is flat. 4,077 lines of CSS contain nine box-shadows
+   and every one is on something that OVERLAPS other content.
+   Elevation is earned by overlap, never used to group or decorate. */
+:root {
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.5);   /* menus, flyouts */
+  --shadow-modal:   0 8px 32px rgba(0, 0, 0, 0.55);  /* dialogs */
+  --shadow-edge-left:  -4px 0 18px rgba(0, 0, 0, 0.45); /* right-side panel */
+  --shadow-edge-right:  2px 0 16px rgba(0, 0, 0, 0.5);  /* left-side panel */
+  --shadow-none: none;  /* everything that sits IN the layout */
+
+  /* Bell state: colour + border + inner glow together, never colour alone. */
+  --glow-bell: 0 0 0 1px var(--bell-border), inset 0 0 12px var(--bell-glow);
+}

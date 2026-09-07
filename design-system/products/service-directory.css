@@ -1,0 +1,86 @@
+/* SERVICE DIRECTORY — the second Amplifier surface in this system
+   (colombod/service-directory). It is a light-first, dual-mode page and
+   does NOT share the muxplex palette; keeping its values scoped is what
+   stops two palettes colliding on the same names (the exact failure
+   DESIGN_LANGUAGE.md §3.4 documents).
+
+   Scope any Service Directory recreation with data-product="service-directory".
+   Values are verbatim from _render_html() in src/service_directory/app.py. */
+[data-product="service-directory"] {
+  color-scheme: light dark;
+
+  --sd-bg: #ffffff;
+  --sd-panel: #ffffff;
+  --sd-alt: #f6f7f9;
+  --sd-border: #e4e7ec;
+  --sd-border-strong: #cdd2da;
+  --sd-text: #1b232f;
+  --sd-text-muted: #56606e;
+  --sd-text-faint: #838d9b;
+  --sd-accent: #3355d1;
+  --sd-accent-weak: #eef1fb;
+  --sd-up: #1f9d55;
+  --sd-up-bg: #e8f6ee;
+  --sd-down: #d23b3b;
+  --sd-down-bg: #fbeaea;
+  --sd-unknown: #8a94a3;
+  --sd-unknown-bg: #eef0f3;
+  --sd-json-num: #c07a00;
+  --sd-json-bool: #b05cc0;
+
+  --sd-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --sd-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --sd-ring-focus: 0 0 0 3px var(--sd-accent-weak);
+  --sd-sidebar-width: 340px;
+  --sd-page-max: 1400px;
+  --sd-settings-width: 480px;
+
+  /* The components in components/directory_core, catalogue, viewer and
+     settings read the aliases below, so a Service Directory screen can be
+     dropped into a muxplex-themed page without either palette leaking. */
+  --bg: var(--sd-bg);
+  --panel: var(--sd-panel);
+  --alt: var(--sd-alt);
+  --border: var(--sd-border);
+  --border-strong: var(--sd-border-strong);
+  --text: var(--sd-text);
+  --text-muted: var(--sd-text-muted);
+  --text-faint: var(--sd-text-faint);
+  --accent: var(--sd-accent);
+  --accent-weak: var(--sd-accent-weak);
+  --up: var(--sd-up);
+  --up-bg: var(--sd-up-bg);
+  --down: var(--sd-down);
+  --down-bg: var(--sd-down-bg);
+  --unknown: var(--sd-unknown);
+  --unknown-bg: var(--sd-unknown-bg);
+  --json-num: var(--sd-json-num);
+  --json-bool: var(--sd-json-bool);
+  --mono: var(--sd-mono);
+  --font-ui: var(--sd-font-ui);
+  --ring-focus: var(--sd-ring-focus);
+  --scrim: rgba(0, 0, 0, .45);
+  --text-on-accent: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-product="service-directory"] {
+    --sd-bg: #0f1319;
+    --sd-panel: #141a22;
+    --sd-alt: #1a212b;
+    --sd-border: #232b36;
+    --sd-border-strong: #323b48;
+    --sd-text: #e6eaf0;
+    --sd-text-muted: #9aa4b2;
+    --sd-text-faint: #707a88;
+    --sd-accent: #7f9cff;
+    --sd-accent-weak: #1b2333;
+    --sd-up: #35c07a;
+    --sd-up-bg: #10251a;
+    --sd-down: #f06666;
+    --sd-down-bg: #2a1414;
+    --sd-unknown: #6b7581;
+    --sd-unknown-bg: #1c232c;
+  }
+}

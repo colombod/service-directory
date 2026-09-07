@@ -1,0 +1,21 @@
+<!-- @dsCard group="Space & Shape" viewport="700x200" name="Elevation" subtitle="Flat by default. A shadow is earned by overlap, never by grouping" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div class="row">
+    <div class="sw" style="flex:1"><div style="height:60px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px"></div><span class="lbl">in the layout</span><span class="val">no shadow — 1px --border</span></div>
+    <div class="sw" style="flex:1"><div style="height:60px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-popover)"></div><span class="lbl">--shadow-popover</span><span class="val">0 4px 16px rgba(0,0,0,.5)</span></div>
+    <div class="sw" style="flex:1"><div style="height:60px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-modal)"></div><span class="lbl">--shadow-modal</span><span class="val">0 8px 32px rgba(0,0,0,.55)</span></div>
+    <div class="sw" style="flex:1"><div style="height:60px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow-edge-left)"></div><span class="lbl">--shadow-edge-left</span><span class="val">right-side panel edge</span></div>
+  </div>
+  <p class="note">Nine box-shadows in 4,077 lines of CSS, and every one overlaps live content.</p></body></html>

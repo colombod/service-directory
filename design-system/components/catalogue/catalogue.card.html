@@ -1,0 +1,43 @@
+<!-- @dsCard group="Components" viewport="700x210" name="Service Directory catalogue" subtitle="NodeGroup, ServiceTable, ServiceRow, HealthPill, AddressLink" -->
+<!DOCTYPE html>
+<html lang="en" data-product="service-directory"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html,body { margin:0; }
+  body { padding:14px 16px; background:var(--bg); color:var(--text); font:14px/1.5 var(--font-ui); }
+  .lbl { font-size:10px; color:var(--text-faint); font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:4px; text-transform:capitalize; }
+  .lb { font-family:var(--mono); font-size:11px; font-weight:600; padding:3px 8px; border-radius:5px; display:inline-block; text-decoration:none; }
+</style></head>
+<body data-product="service-directory">
+  <section>
+    <div style="display:flex;align-items:center;gap:7px;padding:6px 14px 4px">
+      <h2 style="margin:0;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">node-a</h2>
+      <span style="font-size:10px;font-weight:600;color:var(--up);display:inline-flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>reachable</span>
+      <span style="font-size:11px;color:var(--text-faint)">&mdash; Home lab tailnet node</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <tbody>
+        <tr style="background:var(--accent-weak)">
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border);white-space:nowrap"><span style="margin-right:6px">&#127916;</span><button style="font-family:var(--font-ui);font-weight:600;font-size:13px;color:var(--text);background:none;border:none;padding:0">Resolve</button><span style="margin-left:7px;font-size:10px;font-weight:600;color:var(--accent);background:var(--accent-weak);padding:1px 6px;border-radius:4px">pipelines</span></td>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px">Amplifier Resolve dot-graph pipeline runner<span style="margin-left:6px;font-size:10.5px;color:var(--text-faint)"><span style="opacity:.6">#</span>video</span></td>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><span class="pill" style="color:var(--up);background:var(--up-bg)"><span style="font-size:6px">&#9679;</span>up</span></td>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border);white-space:nowrap"><a class="lb" style="color:#fff;background:var(--accent)">Tailnet</a> <a class="lb" style="color:var(--text-muted);border:1px solid var(--border-strong)">LAN</a></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><button style="font-family:var(--font-ui);font-weight:600;font-size:13px;color:var(--text);background:none;border:none;padding:0">Context Intelligence</button></td>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:12px">JSON status endpoint, auto-refresh 30s</td>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border)"><span class="pill" style="color:var(--unknown);background:var(--unknown-bg)"><span style="font-size:6px">&#9679;</span>unknown</span></td>
+          <td style="padding:8px 14px;border-bottom:1px solid var(--border);white-space:nowrap"><a class="lb" style="color:#fff;background:var(--accent)">Tailnet</a></td>
+        </tr>
+        <tr>
+          <td style="padding:8px 14px"><button style="font-family:var(--font-ui);font-weight:600;font-size:13px;color:var(--text);background:none;border:none;padding:0">muxterm</button></td>
+          <td style="padding:8px 14px;color:var(--text-muted);font-size:12px">registered at runtime</td>
+          <td style="padding:8px 14px"><span class="pill" style="color:var(--down);background:var(--down-bg)"><span style="font-size:6px">&#9679;</span>down</span></td>
+          <td style="padding:8px 14px;text-align:right"><button style="border:none;background:none;color:var(--text-faint);font-size:16px;line-height:1">&times;</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</body></html>
