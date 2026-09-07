@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 dist/
+# ...but not under design-system/. A flattened build exported there is
+# checked-in source, not a Python artifact; the bare rule above silently
+# dropped it once already.
+!design-system/dist/
 build/
 *.egg-info/
 .pytest_cache/

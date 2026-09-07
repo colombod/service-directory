@@ -1,9 +1,18 @@
 # Amplifier ecosystem design system
 
-> **This folder is the complete design system**, exported from the design-system
-> project. Layout is preserved, so every relative link in the guideline cards
-> and UI kits works when opened directly in a browser — no build step, no
-> server, no dependencies.
+> **This project is the complete design system.** It was imported verbatim from
+> the `design-system/` folder of
+> [github.com/colombod/service-directory](https://github.com/colombod/service-directory)
+> (see `github.md`) and then extended for **new Amplifier applications**: the
+> Amplifier app primitives now exist as real components
+> (`components/amplifier_app/`) and the app shell ships as a template
+> (`templates/amplifier-app/`). Layout is preserved, so every relative link in
+> the guideline cards and UI kits works when opened directly in a browser — no
+> build step, no server, no dependencies.
+>
+> Read the upstream repositories themselves — `colombod/service-directory` and
+> `bkrabach/muxplex` — if you need more than this system records; every value
+> here came from their source, not from a screenshot.
 
 ## What is where
 
@@ -14,9 +23,11 @@
 | `styles.css` | Source entry point — `@import`s every token file. What the guideline cards load. |
 | `tokens/*.css` | The values: colour, space, radius, type, elevation, layers, control metrics, motion, layout, and `amplifier-app.css` (the new-app palette). |
 | `products/service-directory.css` | Service Directory's own scoped palette. Deliberately not merged. |
-| `dist/amplifier.css` | Flattened single-file build (tokens + `.amp-*` components) for dropping into an app. Generated — edit `tokens/` and re-export. |
 | `guidelines/*.card.html` | 22 reference cards: brand usage, colour families, type, shape, layers, motion, control metrics, and the Amplifier app palette/shell/surfaces/states. |
 | `components/` | Component primitives as real files — `.jsx` + `.d.ts` + `.prompt.md` each, grouped by product surface. |
+| `components/amplifier_app/` | **The Amplifier application primitives** — header, word chrome, filter, overview tile, tile grid, focused rail row, agent panel. Start new Amplifier apps here. |
+| `templates/amplifier-app/` | The app shell as a copyable template (overview grid + Amplifier header). |
+| `thumbnail.html` | The system's homepage tile. |
 | `ui_kits/` | Four interactive kits: muxplex, Service Directory, the generic Amplifier app shell, and the registry restyled on Amplifier rules. |
 | `example/` | One static design page per part: catalogue/viewer, federation (multi-device) setup, Amplifier agent integration. |
 | `assets/` | Brand assets — wordmark, lockups, icons, favicons, OG, and the Amplifier mark. |
@@ -32,9 +43,11 @@ The pages in example/ are the shape to copy.
 ## Opt-in for a new app
 
 ```html
-<html lang="en" data-brand="amplifier">
-  <link rel="stylesheet" href="/design-system/dist/amplifier.css">
+<html lang="en" data-brand="amplifier" data-theme="auto">
+  <link rel="stylesheet" href="/styles.css">
 ```
+
+`data-theme` is `dark` (default when omitted), `light`, or `auto`.
 
 Without `data-brand="amplifier"` the tokens are defined but nothing is remapped,
 so the file is safe to load beside existing styles — muxplex keeps its cyan.
@@ -186,16 +199,44 @@ sits on its own colour family instead of on neutral grey. An app opts in with
 `data-brand="amplifier"` on its root element.
 
 ### 2. Three colour channels, and only three
-- **Azure = interactive.** One accent. Links, selection edges, the single
-  primary button on a surface. Hover → `--amp-azure-hover`; held →
-  `--amp-azure-dim` fill with an azure border.
-- **Violet = the agent, and "this needs you".** It is the mark's third ring, so
-  attention stays inside the brand instead of borrowing muxplex's amber — and it
-  stays distinct from `--amp-err` ("this is broken") and `--amp-warn`.
-- **Green / amber / red = status only**, shared verbatim with muxplex so a
-  status reads identically across the ecosystem.
+- **Interactive = the ring that reads on the surface.** One accent, read
+  through `--amp-interactive`: the bright ring (azure `#08B0F8`, 7.8:1) on the
+  dark theme, the mid ring (blue `#0060E0`, 5.3:1) on the light theme —
+  azure on white is only 2.5:1. Links, selection edges, the single primary
+  button on a surface. Hover → `--amp-interactive-hover`; held →
+  `--amp-interactive-dim` fill with an interactive-edge border.
+- **Violet = the agent, and "this needs you".** `--amp-attention` for fills,
+  edge bars and badges; `--amp-attention-ink` for *words* — on the dark page
+  raw `#5018D0` is 2.2:1, so text uses `#A98CFF` (7.1:1) there and the raw
+  violet (8.3:1) on light. It is the mark's third ring, so attention stays
+  inside the brand instead of borrowing muxplex's amber — and it stays
+  distinct from `--amp-err` ("this is broken") and `--amp-warn`.
+- **Green / amber / red = status only.** Dark values are shared verbatim with
+  muxplex; light gets darker equivalents (`#1E7F3A` / `#9A6700` / `#CF222E`)
+  that clear 4.5:1 on the off-white page.
 
 If you cannot say in one clause what a colour *means* on a surface, remove it.
+
+### 2b. Two themes, one set of names
+The dark theme is the default and what `data-brand="amplifier"` alone gives
+you. Add `data-theme="light"` for light, or `data-theme="auto"` to follow the
+OS. Components read **role tokens** (`--amp-interactive-*`, `--amp-attention-*`,
+`--amp-page` / `-raised` / `-hover`, `--amp-ink-*`, `--amp-ok/warn/err`), never
+the brand constants (`--amp-azure`, `--amp-violet` …), so they follow the theme
+without a second stylesheet.
+
+Easy-on-the-eyes decisions, both themes:
+- Primary ink is **not** pure white or black: `#E6ECFA` on `#0A0E18` (15.2:1)
+  and `#10182B` on `#F4F6FB` (16.1:1). Enough contrast; no halation.
+- The light page is navy-tinted off-white, so `#FFFFFF` raised surfaces still
+  read as nearer and a full-width sheet does not glare.
+- Tertiary ink (`--amp-ink-dim`) is now legible — 4.7:1 dark / 4.5:1 light
+  (it was 2.3:1). It is for meta text and placeholders; still never the only
+  carrier of meaning.
+- Content wells (terminals, logs, previews) stay dark in both themes
+  (`--amp-content`) — a terminal is a terminal.
+- Every text token is measured live against page and raised surfaces in
+  `guidelines/amplifier-contrast.card.html`; body text must clear 4.5:1 on both.
 
 ### 3. The shell: overview → focus
 Every Amplifier app is a list of things you supervise, so every Amplifier app
@@ -215,8 +256,8 @@ The rail is never a second navigation model: it is the overview, condensed.
 
 ### 4. Selection and attention live in the left edge bar
 Every tile and every rail row carries a **3px left border at all times**.
-`--amp-line` at rest, `--amp-azure` when hovered or selected, `--amp-violet`
-plus a glow and a count badge when the item needs a human. Selection therefore
+`--amp-line` at rest, `--amp-interactive` when hovered or selected,
+`--amp-attention` plus a glow and a count badge when the item needs a human. Selection therefore
 changes a colour, never a geometry — nothing shifts, resizes, or lifts.
 
 ### 5. Structure inherited from muxplex, unchanged
@@ -283,7 +324,7 @@ Wordmark, icon and lockup ship as SVG sources with rendered PNGs
 | `styles.css` | the entry point — `@import`s only |
 | `tokens/` | `color`, `space`, `radius`, `type`, `elevation`, `layer`, `control`, `motion`, `layout` |
 | `products/service-directory.css` | the second product's scoped palette |
-| `guidelines/` | 18 foundation specimen cards (colour, type, space, shape, brand) |
+| `guidelines/` | 25 foundation specimen cards (colour, type, space, shape, brand, Amplifier app dark + light themes, live contrast audit) |
 | `components/muxplex_core/` | QuickLink, HeaderButton, FilterInput, Field, Surface, Badge |
 | `components/muxplex_session/` | SessionTile, SidebarItem, DeviceHeader, SessionPill, FilterPill |
 | `components/muxplex_overlay/` | Toast, Menu, Modal, BottomSheet |
@@ -291,7 +332,9 @@ Wordmark, icon and lockup ship as SVG sources with rendered PNGs
 | `components/catalogue/` | NodeGroup, ServiceTable, ServiceRow, HealthPill, CategoryChip, TagList, ReachableBadge, AddressLink |
 | `components/viewer/` | ViewerWelcome, ViewerHeader, ViewerFallback, ServiceDetail, JsonTree |
 | `components/settings/` | SettingsPanel, SettingsSection, KeyValueList, PeerItem, PairingCode |
-| `tokens/amplifier-app.css` | **the palette for new Amplifier apps**, sampled from the mark |
+| `components/amplifier_app/` | **AmpHeader, AgentButton, AttentionBadge, AmpTextControl, AmpFilter, AmpTile, AmpTileGrid, AmpRailRow, AmpAgentPanel** |
+| `templates/amplifier-app/` | the app shell as a template (`AmplifierApp.dc.html` + `ds-base.js`) |
+| `tokens/amplifier-app.css` | **the palette for new Amplifier apps**, sampled from the mark — dark default, `data-theme="light"` / `"auto"` |
 | `ui_kits/amplifier_app/` | **the Amplifier app shell** — start new apps here |
 | `ui_kits/registry_amplifier/` | the app registry restyled on the Amplifier rules (proposal) |
 | `ui_kits/muxplex/` | interactive recreation: grid, rail, session view, settings, agent panel |
@@ -317,10 +360,25 @@ behind them and are called out as additions:
 Nothing else was invented: there is no Avatar, Tabs, Tooltip, Accordion or
 DatePicker here, because neither product has one.
 
+### Fonts
+
+`--font-mono` names **Fira Code** and `--font-brand` names **Urbanist**. Both
+now ship as variable TTFs in `assets/fonts/` (Google Fonts builds, SIL OFL),
+declared in `tokens/fonts.css`: Fira Code wght 300–700; Urbanist wght 100–900
+upright + italic. Licences are `assets/fonts/OFL-FiraCode.txt` and
+`assets/fonts/OFL-Urbanist.txt`; the TTFs are the unmodified Google Fonts
+builds. Note this is an opt-in improvement over upstream — neither
+shipped app loads a webfont (Urbanist appears only baked into the muxplex
+wordmark SVGs), so a consumer that wants the exact upstream rendering can drop
+the `tokens/fonts.css` import and let the system stacks take over.
+
 ### Known gaps
 
 - `muxplex/frontend/deck/` (the "soft deck" surface, its own responsive spec
   and 56px header) is not covered here.
 - Login (`login.html`) and setup pages are not recreated.
+- Each UI kit's root component is named per kit (`AmplifierApp`, `MuxplexApp`,
+  `RegistryApp`, `DirectoryApp`) rather than `App`, so the four kits can be
+  bundled side by side.
 - `--warning` / `--danger` are read by `style.css` but defined nowhere
   upstream; two different reds ship under one name. Use `--warn` / `--err`.

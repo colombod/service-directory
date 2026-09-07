@@ -1,0 +1,25 @@
+<!-- @dsCard group="Amplifier" viewport="700x175" name="Light theme — surfaces & ink" subtitle="data-theme=&quot;light&quot;: same ladder inverted, off-white page, dark content wells stay dark" -->
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier" data-theme="light"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--amp-page); color:var(--amp-ink); font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; flex:1; min-width:88px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--amp-line); }
+  .lbl { font-size:var(--text-xs); color:var(--amp-ink-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--amp-ink-dim); font-family:var(--font-mono); }
+</style></head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page)"></div><span class="lbl">--amp-page</span><span class="val">#F4F6FB · not pure white</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-raised)"></div><span class="lbl">--amp-raised</span><span class="val">#FFFFFF · tiles, panels</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-hover)"></div><span class="lbl">--amp-hover</span><span class="val">#E9EDF7 · hover fill</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-content)"></div><span class="lbl">--amp-content</span><span class="val">#0F1420 · content well</span></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink)">Primary</div><span class="val">--amp-ink #10182B · 16.1:1</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink-muted)">Secondary</div><span class="val">--amp-ink-muted #4B5670 · 7.0:1</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink-dim)">Tertiary</div><span class="val">--amp-ink-dim #66718B · 4.5:1 meta only</span></div>
+  </div>
+</body></html>

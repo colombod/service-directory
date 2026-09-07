@@ -1,4 +1,4 @@
-function App() {
+function RegistryApp() {
   const [services, setServices] = React.useState(window.SERVICES);
   const [filter, setFilter] = React.useState("");
   const [openName, setOpenName] = React.useState(null);
@@ -49,4 +49,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<RegistryApp />);

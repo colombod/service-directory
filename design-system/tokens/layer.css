@@ -1,13 +1,13 @@
 /* LAYER — a MEASURED ladder. Every value is a z-index style.css already
    uses, named after the thing that uses it. Never invent a fresh integer. */
 :root {
-  --z-raised: 1;            /* in-flow, above its own siblings (device tag) */
-  --z-view-overlay: 10;     /* covers one view, not the app */
-  --z-float: 50;            /* floats over page content (session pill) */
-  --z-popover: 100;         /* toast, anchored menu */
-  --z-panel: 200;           /* full-surface panel; page still behind */
-  --z-modal-backdrop: 299;
-  --z-modal: 300;
-  --z-modal-nested: 310;    /* submenu opened from within a modal */
-  --z-hover-preview: 500;   /* known anomaly: sits above the modal */
+  --z-raised: 1; /* @kind other */            /* in-flow, above its own siblings (device tag) */
+  --z-view-overlay: 10; /* @kind other */     /* covers one view, not the app */
+  --z-float: 50; /* @kind other */            /* floats over page content (session pill) */
+  --z-popover: 100; /* @kind other */         /* toast, anchored menu */
+  --z-panel: 200; /* @kind other */           /* full-surface panel; page still behind */
+  --z-modal-backdrop: 299; /* @kind other */
+  --z-modal: 300; /* @kind other */
+  --z-modal-nested: 310; /* @kind other */    /* submenu opened from within a modal */
+  --z-hover-preview: 500; /* @kind other */   /* known anomaly: sits above the modal */
 }
