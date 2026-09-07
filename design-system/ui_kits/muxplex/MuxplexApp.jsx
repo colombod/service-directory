@@ -1,6 +1,6 @@
 const SORTS = ["Recent activity", "Name", "Device"];
 
-function App() {
+function MuxplexApp() {
   const [rail, setRail] = React.useState(true);
   const [view, setView] = React.useState("Grid");
   const [sortIdx, setSortIdx] = React.useState(0);
@@ -55,4 +55,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<MuxplexApp />);

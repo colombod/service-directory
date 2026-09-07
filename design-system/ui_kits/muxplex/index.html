@@ -31,7 +31,7 @@
 // Load the kit's screen files in order, transform JSX, and evaluate each in
 // global scope so their function declarations are shared across files.
 (async function () {
-  const files = ["data.js", "Chrome.jsx", "SessionGrid.jsx", "Overlays.jsx", "App.jsx"];
+  const files = ["data.js", "Chrome.jsx", "SessionGrid.jsx", "Overlays.jsx", "MuxplexApp.jsx"];
   for (const name of files) {
     const src = await (await fetch(name)).text();
     // sourceType "script" keeps the output non-strict, so each file's function

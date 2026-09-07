@@ -1,12 +1,18 @@
 const SORTS = ["Recent", "Attention first", "Name", "Owner"];
+const THEMES = ["Dark", "Light", "Auto"];
 
-function App() {
+function AmplifierApp() {
   const [items, setItems] = React.useState(window.ITEMS);
   const [filter, setFilter] = React.useState("");
   const [sortIdx, setSortIdx] = React.useState(0);
   const [openId, setOpenId] = React.useState(null);
   const [agent, setAgent] = React.useState(false);
   const [toast, setToast] = React.useState(null);
+  const [theme, setTheme] = React.useState(() => localStorage.getItem("amp-kit-theme") || "Dark");
+  React.useEffect(() => {
+    document.documentElement.dataset.theme = theme.toLowerCase();
+    localStorage.setItem("amp-kit-theme", theme);
+  }, [theme]);
 
   React.useEffect(() => {
     if (!toast) return;
@@ -32,7 +38,8 @@ function App() {
       <Header filter={filter} setFilter={setFilter} sort={sort}
         cycleSort={() => setSortIdx((i) => (i + 1) % SORTS.length)} focused={!!open}
         onBack={() => setOpenId(null)} onAgent={() => setAgent((a) => !a)} agentOpen={agent}
-        attention={attention} />
+        attention={attention} theme={theme}
+        cycleTheme={() => setTheme((t) => THEMES[(THEMES.indexOf(t) + 1) % THEMES.length])} />
       <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {open ? (
           <React.Fragment>
@@ -50,4 +57,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<AmplifierApp />);

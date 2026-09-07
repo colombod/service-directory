@@ -23,7 +23,7 @@ function Detail({ item, onResolve, onToast }) {
         </div>
         {attn ? (
           <button onClick={() => { onResolve(item); onToast("Promoted " + item.id); }}
-            style={{ flexShrink: 0, background: "var(--amp-azure)", border: "none",
+            style={{ flexShrink: 0, background: "var(--amp-interactive)", border: "none",
               borderRadius: "var(--radius-sm)", color: "var(--amp-ink-on-accent)",
               fontSize: "var(--text-md)", fontWeight: 600, padding: "9px 18px", cursor: "pointer",
               minHeight: 36 }}>Promote</button>
@@ -33,7 +33,7 @@ function Detail({ item, onResolve, onToast }) {
         {["output", "blocks", "config"].map((t) => (
           <button key={t} onClick={() => setTab(t)}
             style={{ background: "transparent", border: "none", borderBottom: "2px solid " +
-              (tab === t ? "var(--amp-azure)" : "transparent"),
+              (tab === t ? "var(--amp-interactive)" : "transparent"),
               color: tab === t ? "var(--amp-ink)" : "var(--amp-ink-muted)", fontSize: "var(--text-md)",
               padding: "var(--space-sm) var(--space-2xs)", cursor: "pointer" }}>{t}</button>
         ))}

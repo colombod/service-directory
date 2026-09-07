@@ -10,5 +10,5 @@
   --sidebar-gap: var(--space-md);
   --tile-header-height: 32px;
   --sheet-max-height: 70vh;
-  --breakpoint-mobile: 599px;
+  --breakpoint-mobile: 599px; /* @kind other */
 }

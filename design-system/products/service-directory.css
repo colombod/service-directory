@@ -29,7 +29,7 @@
   --sd-json-bool: #b05cc0;
 
   --sd-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --sd-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sd-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; /* @kind font */
 
   --sd-ring-focus: 0 0 0 3px var(--sd-accent-weak);
   --sd-sidebar-width: 340px;

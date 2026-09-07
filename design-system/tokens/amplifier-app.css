@@ -1,5 +1,5 @@
 /* ================================================================
-   AMPLIFIER APPLICATION PALETTE
+   AMPLIFIER APPLICATION PALETTE — dark + light
    ================================================================
    The palette every NEW Amplifier application uses. muxplex keeps its
    own cyan (tokens/color.css) — it shipped first and its values are
@@ -17,60 +17,167 @@
    Those three ARE the brand. Everything below is either one of them or a
    surface/ink chosen to sit under them. No fourth hue was invented.
 
-   NAMING: base values are --amp-*, so they can never collide with
-   muxplex's --bg / --accent family at a different value. The semantic
-   aliases at the bottom are remapped only inside
-   [data-brand="amplifier"], which is how an Amplifier app opts in — the
-   same scoping discipline products/service-directory.css uses, and for
-   the same reason (DESIGN_LANGUAGE.md §3.4).
+   THREE LAYERS OF NAMES
+     1. Brand constants  --amp-navy / --amp-blue / --amp-azure / --amp-violet
+        Never change between themes. Use them for the mark, charts, marketing.
+     2. Role tokens      --amp-interactive-* / --amp-attention-* / --amp-ok…
+        What components READ. They flip per theme so the *meaning* survives:
+        dark → interactive is the bright ring (azure), light → the mid ring
+        (blue), because #08B0F8 on white is only 2.5:1.
+     3. Semantic aliases --bg / --text / --accent … remapped inside
+        [data-brand="amplifier"] so muxplex-vocabulary components work.
+
+   THEMES
+     [data-brand="amplifier"]                       dark (default, unchanged)
+     [data-brand="amplifier"][data-theme="light"]   light
+     [data-brand="amplifier"][data-theme="auto"]    follows prefers-color-scheme
+   Put both attributes on the root element. Every value below is audited
+   against WCAG: body text ≥ 4.5:1 on --amp-page AND --amp-raised; the
+   guidelines/amplifier-contrast card measures them live.
    ================================================================ */
 
 :root {
-  /* ---- brand, straight from the mark ---- */
+  /* ---- 1. brand constants, straight from the mark ---- */
   --amp-navy:   #002880;  /* deep ring — headers on light, fills, charts */
   --amp-navy-deep: #002070;
-  --amp-blue:   #0060E0;  /* mid ring — the pressed/held state of azure */
-  --amp-azure:  #08B0F8;  /* bright ring — INTERACTIVE. one accent. */
+  --amp-blue:   #0060E0;  /* mid ring — interactive on LIGHT surfaces */
+  --amp-azure:  #08B0F8;  /* bright ring — interactive on DARK surfaces */
   --amp-azure-hover: #4FC8FB;
   --amp-violet: #5018D0;  /* crossing ring — agent + attention only */
   --amp-violet-soft: rgba(80, 24, 208, 0.22);
 
-  /* Low-alpha state fills, derived from the two accents. */
+  /* Kept for compatibility with older call sites; prefer the role tokens. */
   --amp-azure-dim:  rgba(8, 176, 248, 0.15);
   --amp-azure-edge: rgba(8, 176, 248, 0.55);
   --amp-violet-dim: rgba(80, 24, 208, 0.20);
   --amp-violet-edge: rgba(80, 24, 208, 0.65);
 
-  /* ---- surfaces: a navy-tinted three-step ladder ----
-     Tinted toward --amp-navy rather than neutral grey, so the mark and
-     the accent sit on a ground of the same family. Higher = nearer. */
+  /* ---- 2. role tokens — DARK values (the default theme) ---- */
+
+  /* Interactive: one accent. Links, selection edges, the single primary
+     button on a surface.                    azure on #0A0E18 → 7.8:1 */
+  --amp-interactive:       var(--amp-azure);
+  --amp-interactive-hover: var(--amp-azure-hover);   /* 10.3:1 */
+  --amp-interactive-dim:   rgba(8, 176, 248, 0.15);  /* held / selected fill */
+  --amp-interactive-edge:  rgba(8, 176, 248, 0.55);  /* chip + focus borders */
+
+  /* Attention: the agent, and "this needs you". Two tokens because the
+     raw violet is a FILL colour — as text on the dark page it is 2.2:1.
+     --amp-attention      fills, edge bars, badge backgrounds (white text 8.8:1)
+     --amp-attention-ink  the violet you may write words in    → 7.1:1 */
+  --amp-attention:      var(--amp-violet);
+  --amp-attention-ink:  #A98CFF;
+  --amp-attention-dim:  rgba(80, 24, 208, 0.20);
+  --amp-attention-edge: rgba(80, 24, 208, 0.65);
+  --amp-attention-soft: rgba(80, 24, 208, 0.22);
+
+  /* Surfaces: a navy-tinted three-step ladder. Tinted toward --amp-navy
+     rather than neutral grey so the mark sits on its own family. */
   --amp-page:    #0A0E18;
   --amp-raised:  #101728;  /* tiles, panels, menus, dialogs */
   --amp-hover:   #18213A;  /* raised within a surface; hover fills */
   --amp-scrim:   rgba(10, 14, 24, 0.86);
   --amp-content: #05070C;  /* content wells: terminals, logs, previews */
 
-  /* ---- lines ---- */
+  /* Lines */
   --amp-line:        #232D45;
   --amp-line-subtle: #192036;
   --amp-line-strong: #33406A;
 
-  /* ---- ink: three tiers, and only three ---- */
-  --amp-ink:       #EDF2FF;  /* primary   ~16.8:1 on --amp-page */
-  --amp-ink-muted: #8B95AD;  /* secondary  ~6.4:1 on --amp-page — AA */
-  --amp-ink-dim:   #4A5470;  /* decorative — never the only signal */
-  --amp-ink-on-accent: #041018; /* on azure fills */
+  /* Ink: three tiers, and only three. Primary is deliberately NOT pure
+     white — 15:1 is ample and #FFFFFF-on-#0A0E18 halates on OLED. */
+  --amp-ink:       #E6ECFA;  /* primary   15.2:1 on page, 13.6:1 on raised */
+  --amp-ink-muted: #8B95AD;  /* secondary  6.4:1 on page,  5.8:1 on raised — AA */
+  --amp-ink-dim:   #707D9B;  /* tertiary   4.7:1 on page,  4.2:1 on raised.
+                                Meta text and placeholders only; never the
+                                sole carrier of meaning. Was #4A5470 (2.3:1). */
+  --amp-ink-on-accent: #041018; /* on --amp-interactive fills → 7.9:1 */
 
-  /* ---- signal: status, never decoration ----
-     Green/amber/red are not brand colours; they are shared with muxplex
-     deliberately so a status reads identically across the ecosystem. */
+  /* Signal: status, never decoration. Shared verbatim with muxplex so a
+     status reads identically across the ecosystem.
+     ok 7.6:1 · warn 7.7:1 · err 5.8:1 on --amp-page */
   --amp-ok:   #3fb950;
   --amp-warn: #d29922;
   --amp-err:  #f85149;
+
+  --amp-terminal-fg: #c9d1d9;
 }
 
-/* An Amplifier application opts in by scoping its root element.
-   Inside this scope the component primitives read Amplifier values. */
+/* ---- 2b. role tokens — LIGHT values ----
+   Same ladder, inverted; same three hues, brightness flipped. The page is
+   navy-tinted off-white, not #FFFFFF, so raised surfaces (#FFFFFF) still
+   read as nearer and the sheet does not glare. Content wells stay dark:
+   a terminal is a terminal in either theme. */
+[data-brand="amplifier"][data-theme="light"] {
+  color-scheme: light;
+
+  --amp-interactive:       var(--amp-blue);       /* #0060E0 on #F4F6FB → 5.3:1, on #FFF 5.6:1 */
+  --amp-interactive-hover: #0048B8;               /* 8.1:1 */
+  --amp-interactive-dim:   rgba(0, 96, 224, 0.10);
+  --amp-interactive-edge:  rgba(0, 96, 224, 0.45);
+
+  --amp-attention:      var(--amp-violet);        /* fills; white on it 8.8:1 */
+  --amp-attention-ink:  var(--amp-violet);        /* #5018D0 on #F4F6FB → 8.3:1 */
+  --amp-attention-dim:  rgba(80, 24, 208, 0.10);
+  --amp-attention-edge: rgba(80, 24, 208, 0.45);
+  --amp-attention-soft: rgba(80, 24, 208, 0.12);
+
+  --amp-page:    #F4F6FB;
+  --amp-raised:  #FFFFFF;
+  --amp-hover:   #E9EDF7;
+  --amp-scrim:   rgba(16, 24, 43, 0.45);
+  --amp-content: #0F1420;
+
+  --amp-line:        #D3D9E8;
+  --amp-line-subtle: #E4E8F2;
+  --amp-line-strong: #B6C0D9;
+
+  --amp-ink:       #10182B;  /* 16.1:1 on page */
+  --amp-ink-muted: #4B5670;  /*  7.0:1 on page, 7.5:1 on raised */
+  --amp-ink-dim:   #66718B;  /*  4.5:1 on page, 4.8:1 on raised */
+  --amp-ink-on-accent: #FFFFFF; /* on #0060E0 → 5.6:1 */
+
+  --amp-ok:   #1E7F3A;  /* 5.0:1 */
+  --amp-warn: #9A6700;  /* 4.9:1 */
+  --amp-err:  #CF222E;  /* 5.4:1 */
+
+  --amp-terminal-fg: #c9d1d9;
+}
+
+@media (prefers-color-scheme: light) {
+  [data-brand="amplifier"][data-theme="auto"] {
+    color-scheme: light;
+    --amp-interactive:       var(--amp-blue);
+    --amp-interactive-hover: #0048B8;
+    --amp-interactive-dim:   rgba(0, 96, 224, 0.10);
+    --amp-interactive-edge:  rgba(0, 96, 224, 0.45);
+    --amp-attention:      var(--amp-violet);
+    --amp-attention-ink:  var(--amp-violet);
+    --amp-attention-dim:  rgba(80, 24, 208, 0.10);
+    --amp-attention-edge: rgba(80, 24, 208, 0.45);
+    --amp-attention-soft: rgba(80, 24, 208, 0.12);
+    --amp-page:    #F4F6FB;
+    --amp-raised:  #FFFFFF;
+    --amp-hover:   #E9EDF7;
+    --amp-scrim:   rgba(16, 24, 43, 0.45);
+    --amp-content: #0F1420;
+    --amp-line:        #D3D9E8;
+    --amp-line-subtle: #E4E8F2;
+    --amp-line-strong: #B6C0D9;
+    --amp-ink:       #10182B;
+    --amp-ink-muted: #4B5670;
+    --amp-ink-dim:   #66718B;
+    --amp-ink-on-accent: #FFFFFF;
+    --amp-ok:   #1E7F3A;
+    --amp-warn: #9A6700;
+    --amp-err:  #CF222E;
+  }
+}
+
+/* ---- 3. semantic aliases ----
+   An Amplifier application opts in by scoping its root element. Inside
+   this scope the muxplex-vocabulary primitives read Amplifier values, and
+   because they point at ROLE tokens they follow the theme for free. */
 [data-brand="amplifier"] {
   color-scheme: dark;
 
@@ -89,9 +196,9 @@
   --border: var(--amp-line);
   --border-subtle: var(--amp-line-subtle);
 
-  --accent: var(--amp-azure);
-  --accent-hover: var(--amp-azure-hover);
-  --accent-dim: var(--amp-azure-dim);
+  --accent: var(--amp-interactive);
+  --accent-hover: var(--amp-interactive-hover);
+  --accent-dim: var(--amp-interactive-dim);
 
   --ok: var(--amp-ok);
   --warn: var(--amp-warn);
@@ -100,10 +207,10 @@
   /* Attention is VIOLET here, not amber: it is the mark's third ring, and
      it keeps "something wants you" distinct from "something is wrong"
      (--warn) without introducing a colour the brand does not contain. */
-  --bell: var(--amp-violet);
-  --bell-glow: var(--amp-violet-soft);
-  --bell-border: var(--amp-violet-edge);
+  --bell: var(--amp-attention);
+  --bell-glow: var(--amp-attention-soft);
+  --bell-border: var(--amp-attention-edge);
 
   --terminal-bg: var(--amp-content);
-  --terminal-fg: #c9d1d9;
+  --terminal-fg: var(--amp-terminal-fg);
 }

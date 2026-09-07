@@ -1,0 +1,37 @@
+<!-- @dsCard group="Amplifier" viewport="700x300" name="Contrast audit (live)" subtitle="Measured from the loaded tokens, not typed in — every text token against page and raised, both themes" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; display:grid; grid-template-columns:1fr 1fr; font-family:var(--font-ui); font-size:var(--text-xs); }
+  .half { padding:10px 12px; background:var(--amp-page); color:var(--amp-ink); }
+  .cap { font-size:var(--text-2xs); color:var(--amp-ink-dim); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; display:block; }
+  table { width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:10.5px; }
+  th { text-align:left; font-weight:500; color:var(--amp-ink-muted); padding:2px 4px; border-bottom:1px solid var(--amp-line); }
+  td { padding:2px 4px; border-bottom:1px solid var(--amp-line-subtle); white-space:nowrap; }
+  td.n { color:var(--amp-ink-muted); }
+  .pass { color:var(--amp-ok); } .aa3 { color:var(--amp-warn); } .fail { color:var(--amp-err); }
+  .sample { display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:4px; border:1px solid var(--amp-line); }
+</style></head>
+<body>
+  <div class="half" data-brand="amplifier"><span class="cap">dark</span><table><thead><tr><th>token</th><th>on page</th><th>on raised</th></tr></thead><tbody></tbody></table></div>
+  <div class="half" data-brand="amplifier" data-theme="light"><span class="cap">light</span><table><thead><tr><th>token</th><th>on page</th><th>on raised</th></tr></thead><tbody></tbody></table></div>
+<script>
+const TOKENS = ["--amp-ink","--amp-ink-muted","--amp-ink-dim","--amp-interactive","--amp-attention-ink","--amp-ok","--amp-warn","--amp-err"];
+function rgb(s){ const m = s.match(/[\d.]+/g).map(Number); return m; }
+function lum([r,g,b]){ const f=c=>{c/=255;return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4)}; return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b); }
+function ratio(a,b){ const la=lum(a), lb=lum(b); return (Math.max(la,lb)+0.05)/(Math.min(la,lb)+0.05); }
+function resolve(el, name){ const p=document.createElement('span'); p.style.color=`var(${name})`; el.appendChild(p); const c=rgb(getComputedStyle(p).color); p.remove(); return c; }
+function cls(r){ return r>=4.5?'pass':r>=3?'aa3':'fail'; }
+document.querySelectorAll('.half').forEach(half => {
+  const page = resolve(half,'--amp-page'), raised = resolve(half,'--amp-raised');
+  const tb = half.querySelector('tbody');
+  TOKENS.forEach(t => {
+    const c = resolve(half,t); const a = ratio(c,page), b = ratio(c,raised);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="n"><span class="sample" style="background:var(${t})"></span>${t.replace('--amp-','')}</td><td class="${cls(a)}">${a.toFixed(1)}:1</td><td class="${cls(b)}">${b.toFixed(1)}:1</td>`;
+    tb.appendChild(tr);
+  });
+});
+</script>
+</body></html>

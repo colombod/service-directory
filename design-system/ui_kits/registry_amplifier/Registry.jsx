@@ -21,7 +21,7 @@ function HealthDot({ health }) {
 function Attention({ count, small }) {
   return (
     <span style={{ minWidth: small ? 15 : 16, height: small ? 15 : 16, padding: "0 4px", borderRadius: 999,
-      background: "var(--amp-violet)", color: "#fff", fontSize: 9, fontWeight: 700, lineHeight: 1,
+      background: "var(--amp-attention)", color: "#fff", fontSize: 9, fontWeight: 700, lineHeight: 1,
       display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
       animation: "amp-pulse 1.4s ease-in-out infinite" }}>{count}</span>
   );
@@ -29,7 +29,7 @@ function Attention({ count, small }) {
 
 function Chip({ children, tone }) {
   const t = tone === "accent"
-    ? { color: "var(--amp-azure)", background: "var(--amp-azure-dim)", border: "1px solid var(--amp-azure-edge)" }
+    ? { color: "var(--amp-interactive)", background: "var(--amp-interactive-dim)", border: "1px solid var(--amp-interactive-edge)" }
     : { color: "var(--amp-ink-muted)", background: "transparent", border: "1px solid var(--amp-line)" };
   return (
     <span style={{ fontSize: "var(--text-2xs)", padding: "1px 6px", borderRadius: "var(--radius-pill)",
@@ -43,7 +43,7 @@ function Link({ children, onClick, style }) {
     <button onClick={onClick} onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)}
       style={{ display: "inline-flex", alignItems: "center", gap: "var(--control-gap)",
         padding: "var(--control-pad-y) var(--control-pad-x)", background: "transparent", border: "none",
-        borderRadius: "var(--radius-sm)", color: hot ? "var(--amp-azure-hover)" : "var(--amp-azure)",
+        borderRadius: "var(--radius-sm)", color: hot ? "var(--amp-interactive-hover)" : "var(--amp-interactive)",
         fontSize: "var(--text-md)", cursor: "pointer", transition: "color var(--t-fast)", ...style }}>
       {children}
     </button>
@@ -61,9 +61,9 @@ function Filter({ value, onChange, wide }) {
         aria-label="Filter services by name, description, tag, or origin"
         onFocus={() => setHot(true)} onBlur={() => setHot(false)}
         style={{ fontSize: "var(--text-md)", fontFamily: "var(--font-ui)", color: "var(--amp-ink)",
-          background: "var(--amp-hover)", border: "1px solid " + (hot ? "var(--amp-azure)" : "var(--amp-line)"),
+          background: "var(--amp-hover)", border: "1px solid " + (hot ? "var(--amp-interactive)" : "var(--amp-line)"),
           borderRadius: "var(--radius-sm)", padding: "4px 24px 4px 27px", width: wide ? "100%" : 190,
-          outline: hot ? "2px solid var(--amp-azure)" : "none", outlineOffset: 1 }} />
+          outline: hot ? "2px solid var(--amp-interactive)" : "none", outlineOffset: 1 }} />
       {value ? (
         <button onClick={() => onChange("")} aria-label="Clear filter"
           style={{ position: "absolute", right: 6, width: 16, height: 16, padding: 0, display: "flex",
@@ -82,7 +82,7 @@ function Header({ filter, setFilter, focused, onBack, onSettings, onAgent, agent
       <img src={AMP_MARK} alt="Amplifier" width="16" height="16" />
       <span style={{ fontSize: "var(--text-md)", fontWeight: 600 }}>App Registry</span>
       <span style={{ fontSize: "var(--text-xs)", color: "var(--amp-ink-muted)" }}>
-        {window.NODE.name} · <span style={{ color: "var(--amp-azure)" }}>{window.NODE.role}</span>
+        {window.NODE.name} · <span style={{ color: "var(--amp-interactive)" }}>{window.NODE.role}</span>
       </span>
       <div style={{ display: "flex", alignItems: "center", marginLeft: "var(--space-lg)" }}>
         {focused ? <Link onClick={onBack}>← All services</Link> : null}
@@ -93,7 +93,7 @@ function Header({ filter, setFilter, focused, onBack, onSettings, onAgent, agent
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
         {attention ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-sm)",
-            fontSize: "var(--text-xs)", color: "var(--amp-violet)" }}>
+            fontSize: "var(--text-xs)", color: "var(--amp-attention-ink)" }}>
             <Attention count={attention} small />needs you
           </span>
         ) : null}
@@ -112,8 +112,8 @@ function AgentButton({ onClick, open }) {
       onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)}
       style={{ display: "inline-flex", alignItems: "center", gap: "var(--control-gap)",
         padding: "var(--control-pad-y) var(--control-pad-x)",
-        background: on ? "var(--amp-violet-dim)" : "transparent",
-        border: "1px solid " + (on ? "var(--amp-violet-edge)" : "var(--amp-line)"),
+        background: on ? "var(--amp-attention-dim)" : "transparent",
+        border: "1px solid " + (on ? "var(--amp-attention-edge)" : "var(--amp-line)"),
         borderRadius: "var(--radius-sm)", color: on ? "var(--amp-ink)" : "var(--amp-ink-muted)",
         fontSize: "var(--text-md)", cursor: "pointer" }}>
       <img src={AMP_MARK} alt="" width="16" height="16" />Agent
@@ -122,8 +122,8 @@ function AgentButton({ onClick, open }) {
 }
 
 function edge(svc, selected, hot) {
-  if (svc.attention > 0) return "var(--amp-violet)";
-  if (selected || hot) return "var(--amp-azure)";
+  if (svc.attention > 0) return "var(--amp-attention)";
+  if (selected || hot) return "var(--amp-interactive)";
   return "var(--amp-line)";
 }
 
@@ -133,9 +133,9 @@ function ServiceTile({ svc, onOpen, onRemove }) {
   return (
     <div onClick={() => onOpen(svc)} onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)}
       style={{ background: "var(--amp-raised)",
-        border: "1px solid " + (attn ? "var(--amp-violet-edge)" : hot ? "var(--amp-azure)" : "var(--amp-line)"),
+        border: "1px solid " + (attn ? "var(--amp-attention-edge)" : hot ? "var(--amp-interactive)" : "var(--amp-line)"),
         borderLeft: "3px solid " + edge(svc, false, hot), borderRadius: "var(--radius-sm)",
-        boxShadow: attn ? "0 0 0 1px var(--amp-violet-edge), inset 0 0 12px var(--amp-violet-soft)" : "none",
+        boxShadow: attn ? "0 0 0 1px var(--amp-attention-edge), inset 0 0 12px var(--amp-attention-soft)" : "none",
         display: "flex", flexDirection: "column", cursor: "pointer", overflow: "hidden",
         transition: "border-color var(--t-fast), box-shadow var(--t-fast)" }}>
       <div style={{ padding: "var(--space-md) var(--space-lg)", display: "flex", alignItems: "center",
@@ -169,7 +169,7 @@ function ServiceTile({ svc, onOpen, onRemove }) {
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)",
           color: "var(--amp-ink-muted)", flex: 1, overflow: "hidden", whiteSpace: "nowrap",
           textOverflow: "ellipsis" }}>{svc.links[0].url}</span>
-        <span style={{ fontSize: "var(--text-xs)", color: "var(--amp-azure)" }}>Open here →</span>
+        <span style={{ fontSize: "var(--text-xs)", color: "var(--amp-interactive)" }}>Open here →</span>
       </div>
     </div>
   );
@@ -221,10 +221,10 @@ function RailRow({ svc, selected, onOpen }) {
   return (
     <div onClick={() => onOpen(svc)} onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)}
       style={{ background: selected ? "var(--amp-hover)" : "var(--amp-raised)", cursor: "pointer",
-        border: "1px solid " + (attn ? "var(--amp-violet-edge)" : selected || hot ? "var(--amp-azure)" : "var(--amp-line)"),
+        border: "1px solid " + (attn ? "var(--amp-attention-edge)" : selected || hot ? "var(--amp-interactive)" : "var(--amp-line)"),
         borderLeft: "3px solid " + edge(svc, selected, hot), borderRadius: "var(--radius-sm)",
         padding: "var(--space-md)", display: "flex", flexDirection: "column", gap: "var(--space-2xs)",
-        boxShadow: attn ? "0 0 0 1px var(--amp-violet-edge), inset 0 0 12px var(--amp-violet-soft)" : "none",
+        boxShadow: attn ? "0 0 0 1px var(--amp-attention-edge), inset 0 0 12px var(--amp-attention-soft)" : "none",
         transition: "border-color var(--t-fast), box-shadow var(--t-fast)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
         {attn ? <Attention count={svc.attention} small /> : null}

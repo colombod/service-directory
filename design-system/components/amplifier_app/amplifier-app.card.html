@@ -1,0 +1,46 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Amplifier app" subtitle="AmpHeader, AmpTextControl, AmpFilter, AmpTile, AmpRailRow" -->
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>*{box-sizing:border-box}html,body{margin:0;height:100%}body{background:var(--amp-page);color:var(--amp-ink);font-family:var(--font-ui);font-size:var(--text-md)}button{font-family:inherit}a{color:var(--amp-interactive);text-decoration:none}a:hover{color:var(--amp-interactive-hover)}::placeholder{color:var(--amp-ink-dim);opacity:1}@keyframes amp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.82)}}</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { AmpHeader, AmpTextControl, AmpFilter, AmpTile, AmpRailRow } = window.AmplifierDesignSystem_5ffeec;
+const PREVIEW = "· block 3/7  approve promote 0.1.0?\n  waiting on review\n$ amp run --resume";
+function Card() {
+  const [filter, setFilter] = React.useState("");
+  return (
+    <div style={{position:"relative",height:"100%",display:"flex",flexDirection:"column"}}>
+      <AmpHeader appName="Resolve" attention={1} attentionNoun="run" agentOpen={false} onAgent={() => {}}>
+        <AmpTextControl>← All runs</AmpTextControl>
+        <AmpTextControl expanded>Attention first ▾</AmpTextControl>
+        <div style={{marginLeft:"var(--space-md)"}}><AmpFilter value={filter} onChange={setFilter} /></div>
+      </AmpHeader>
+      <div style={{flex:1,minHeight:0,display:"flex",gap:"var(--grid-gap)",padding:"var(--grid-padding)"}}>
+        <div style={{width:340,flexShrink:0}}>
+          <AmpTile name="service-directory" status="needs you" statusTone="attention" attention={3}
+            summary="Promotion blocked on review — block 3 of 7." preview={PREVIEW} tag="colombod" onOpen={() => {}} />
+        </div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",gap:"var(--space-md)",minWidth:0}}>
+          <AmpRailRow name="muxplex · frontend" status="ok" statusTone="ok" meta="updated 14s ago" selected onOpen={() => {}} />
+          <AmpRailRow name="resolve · indexer" status="running" statusTone="accent" meta="3w · 2m" onOpen={() => {}} />
+          <AmpRailRow name="registry · sync" status="unknown" meta="never reached" onOpen={() => {}} />
+          <AmpRailRow name="doctor · nightly" status="failed" statusTone="err" meta="exit 1" onOpen={() => {}} />
+          <AmpRailRow name="pairing · peer-02" status="needs you" statusTone="attention" attention={1} meta="code expires in 600s" onOpen={() => {}} />
+        </div>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Card />);
+</script>
+</body>
+</html>

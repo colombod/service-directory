@@ -1,4 +1,4 @@
-function App() {
+function DirectoryApp() {
   const [filter, setFilter] = React.useState("");
   const [collapsed, setCollapsed] = React.useState(false);
   const [selected, setSelected] = React.useState(null);
@@ -53,4 +53,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("root")).render(<DirectoryApp />);

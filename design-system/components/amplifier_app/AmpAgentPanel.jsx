@@ -1,0 +1,73 @@
+import React from "react";
+
+const AMP_MARK = "../../assets/amplifier/amplifier-icon-32.png";
+
+/** The Amplifier Agent panel: a violet-edged panel over a page that stays
+ *  live behind it. Text on the page — no chat bubbles, no second product
+ *  header inside the app, never a modal. */
+export function AmpAgentPanel({ log = [], draft = "", onDraft, onSend, onClose, markSrc = AMP_MARK, placeholder = "Ask about these runs", style }) {
+  return (
+    <aside
+      style={{
+        position: "absolute", top: 0, right: 0, bottom: 0, width: 380, maxWidth: "92%",
+        zIndex: "var(--z-panel)", background: "var(--amp-raised)",
+        borderLeft: "1px solid var(--amp-attention-edge)", boxShadow: "var(--shadow-edge-left)",
+        display: "flex", flexDirection: "column", ...style,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", padding: "var(--space-lg)", borderBottom: "1px solid var(--amp-line-subtle)" }}>
+        <img src={markSrc} alt="" width="16" height="16" />
+        <h2 style={{ margin: 0, fontSize: "var(--text-md)", fontWeight: 600, flex: 1 }}>Agent</h2>
+        <button
+          onClick={onClose}
+          aria-label="Close panel"
+          style={{ background: "transparent", border: "none", color: "var(--amp-ink-muted)", fontSize: "var(--text-xl)", lineHeight: 1, cursor: "pointer" }}
+        >
+          ×
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-lg)", display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
+        {log.map((m, i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", gap: "var(--space-2xs)" }}>
+            <span
+              style={{
+                fontSize: "var(--text-xs)", textTransform: "uppercase",
+                letterSpacing: "var(--tracking-caps)",
+                color: m.from === "agent" ? "var(--amp-attention)" : "var(--amp-ink-dim)",
+              }}
+            >
+              {m.from}
+            </span>
+            <p style={{ margin: 0, fontSize: "var(--text-md)", lineHeight: 1.5 }}>{m.text}</p>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: "var(--space-lg)", borderTop: "1px solid var(--amp-line-subtle)", display: "flex", gap: "var(--space-sm)" }}>
+        <input
+          value={draft}
+          onChange={(e) => onDraft && onDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && onSend) onSend(); }}
+          placeholder={placeholder}
+          style={{
+            flex: 1, minWidth: 0, fontSize: "var(--text-md)", fontFamily: "var(--font-ui)",
+            color: "var(--amp-ink)", background: "var(--amp-hover)", border: "1px solid var(--amp-line)",
+            borderRadius: "var(--radius-sm)", padding: "var(--control-pad-y) var(--control-pad-x)",
+          }}
+        />
+        <button
+          onClick={onSend}
+          style={{
+            background: "var(--amp-attention-dim)", border: "1px solid var(--amp-attention-edge)",
+            borderRadius: "var(--radius-sm)", color: "var(--amp-ink)", fontSize: "var(--text-md)",
+            fontFamily: "var(--font-ui)", padding: "var(--control-pad-y) var(--control-pad-x)", cursor: "pointer",
+          }}
+        >
+          Send
+        </button>
+      </div>
+      <p style={{ margin: 0, padding: "0 var(--space-lg) var(--space-lg)", fontSize: "var(--text-xs)", color: "var(--amp-ink-dim)" }}>
+        Powered by <a href="#">Amplifier Agent</a>
+      </p>
+    </aside>
+  );
+}
