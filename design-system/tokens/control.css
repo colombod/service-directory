@@ -1,0 +1,17 @@
+/* CONTROL — the metrics that make an interactive thing feel like the same
+   interactive thing everywhere. --touch-min is adopted and non-negotiable:
+   48x48 CSS px is the one floor satisfying Apple HIG (44pt), Material
+   (48dp), WCAG 2.2 AA (24px) and WCAG 2.1 AAA (44px) at once. */
+:root {
+  --touch-min: 48px;        /* minimum hit area, any pointer. A floor. */
+  --header-height: 44px;    /* app header — visual height, not hit target */
+
+  --control-pad-y: var(--space-xs); /* 4px */
+  --control-pad-x: 10px;            /* the ONE deliberate off-scale value:
+                                       a text control gets more horizontal
+                                       than vertical inset so it reads as a
+                                       control without a box drawn round it */
+  --control-gap: var(--space-sm);   /* 6px — icon to label */
+  --focus-ring: 2px solid var(--accent);
+  --focus-ring-offset: 2px;
+}

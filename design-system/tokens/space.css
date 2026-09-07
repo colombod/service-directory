@@ -1,0 +1,13 @@
+/* SPACE — t-shirt names, not numbers. A description of the app, not a
+   proposal for it: 8px (~75 uses), 6px (~59), 4px (~45), 12px (~24),
+   16px (~22), 2px (~11) already carry essentially all spacing in style.css.
+   The scale is deliberately NOT a strict 4px grid — 6px is the app's unit. */
+:root {
+  --space-2xs: 2px;   /* hairline nudge; optical alignment only */
+  --space-xs:  4px;   /* inside a small control */
+  --space-sm:  6px;   /* gap between related items — the app's unit */
+  --space-md:  8px;   /* gap between components; the grid gap */
+  --space-lg:  12px;  /* padding inside a panel or section */
+  --space-xl:  16px;  /* page margin; separation between regions */
+  --space-2xl: 24px;  /* rare — only to separate unrelated regions */
+}

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent integration — Amplifier design system</title>
+<link rel="icon" href="../assets/amplifier/amplifier-icon-32.png">
+<link rel="stylesheet" href="../dist/amplifier.css">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { overflow: hidden; }
+</style>
+</head>
+<body>
+<div class="amp-app">
+  <header class="amp-header">
+    <img class="amp-header__mark" src="../assets/amplifier/amplifier-icon-32.png" alt="Amplifier">
+    <span class="amp-header__name">Service registry</span>
+    <button class="amp-link" type="button">&larr; Catalogue</button>
+    <div class="amp-header__spacer"></div>
+    <span class="amp-pill amp-pill--agent"><span class="amp-dot"></span>agent connected</span>
+    <button class="amp-btn amp-btn--agent" type="button" aria-pressed="false">
+      <img src="../assets/amplifier/amplifier-icon-32.png" alt="" width="16" height="16">Agent
+    </button>
+  </header>
+
+  <div class="amp-settings">
+    <nav class="amp-tabrail" aria-label="Settings sections">
+      <button class="amp-tab" type="button" aria-selected="false">Write token</button>
+      <button class="amp-tab" type="button" aria-selected="false">Register service</button>
+      <button class="amp-tab" type="button" aria-selected="false">Node identity</button>
+      <button class="amp-tab" type="button" aria-selected="false">Federation</button>
+      <button class="amp-tab" type="button" aria-selected="true">Agent integration</button>
+      <button class="amp-tab" type="button" aria-selected="false">Lifecycle</button>
+    </nav>
+
+    <section class="amp-section" aria-label="Agent integration">
+      <div class="amp-section__head">
+        <h1 class="amp-section__title">Agent integration</h1>
+        <p class="amp-section__sub">Point an Amplifier agent at this node's HTTP API. Nothing here is
+          a capability the API doesn't already expose &mdash; the integration exists so connection
+          setup happens once, in one place, instead of every consumer re-deriving it.</p>
+      </div>
+
+      <div class="amp-stack">
+        <div class="amp-note amp-note--agent">
+          <strong>This node does not depend on Amplifier.</strong> It never imports it and behaves
+          identically whether or not Amplifier is installed. Install the behavior bundle in
+          <em>your own</em> Amplifier app configuration &mdash; not into this server.
+        </div>
+
+        <ol class="amp-steps">
+          <li class="amp-step" data-state="done">
+            <span class="amp-step__num">&#10003;</span>
+            <h2 class="amp-step__title">Add the behavior to your bundle</h2>
+            <div class="amp-step__body">
+              <p>App-level, alongside the rest of your Amplifier setup.</p>
+              <pre class="amp-code">includes:
+  - bundle: git+https://github.com/microsoft/amplifier-foundation@main
+  - bundle: git+https://github.com/&lt;org&gt;/amplifier-bundle-registry@main<button class="amp-link amp-code__copy" type="button">Copy</button></pre>
+              <p>Or try it standalone before wiring it in:</p>
+              <pre class="amp-code">amplifier run --bundle git+https://github.com/&lt;org&gt;/amplifier-bundle-registry@main \
+  "list the services on my registry"<button class="amp-link amp-code__copy" type="button">Copy</button></pre>
+            </div>
+          </li>
+
+          <li class="amp-step" data-state="active">
+            <span class="amp-step__num">2</span>
+            <h2 class="amp-step__title">Three values, resolved once</h2>
+            <div class="amp-step__body">
+              <p>The same three a hand-written client would need. Copy them from here rather than
+                reconstructing them by hand.</p>
+
+              <div class="amp-panel">
+                <table class="amp-kv">
+                  <tr>
+                    <th scope="row">Server URL</th>
+                    <td>http://100.111.191.22:80
+                      <div class="amp-field__hint">Env: <code>REGISTRY_URL</code>. Prefer the
+                        tailnet DNS name so any device on the tailnet resolves it.</div></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Write token</th>
+                    <td>&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;
+                      <div class="amp-field__hint">Required for every mutation. <strong>Not needed
+                        at all</strong> when the agent runs on this host &mdash; socket-level
+                        <code>127.0.0.1</code>/<code>::1</code> bypasses auth.</div></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">CA certificate</th>
+                    <td>not applicable &mdash; this node is served over HTTP
+                      <div class="amp-field__hint">TLS instances only, and only those using the
+                        CA method.</div></td>
+                  </tr>
+                </table>
+              </div>
+
+              <div class="amp-row-inline">
+                <button class="amp-btn amp-btn--primary" type="button">Copy agent config</button>
+                <button class="amp-link" type="button">Reveal token</button>
+                <button class="amp-link" type="button">Rotate</button>
+              </div>
+            </div>
+          </li>
+
+          <li class="amp-step">
+            <span class="amp-step__num">3</span>
+            <h2 class="amp-step__title">If this node is served over TLS</h2>
+            <div class="amp-step__body">
+              <pre class="amp-code">curl -sk "$REGISTRY_URL/api/ca" -o registry-ca.crt<button class="amp-link amp-code__copy" type="button">Copy</button></pre>
+              <div class="amp-note amp-note--err">
+                <strong>Fetch the CA, never the leaf.</strong> The leaf is what the server presents
+                on the wire; verifying against it fails with
+                <code>unable to get local issuer certificate</code>.
+              </div>
+              <div class="amp-note amp-note--warn">
+                <strong>A 404 from <code>/api/ca</code> is an answer, not a fault.</strong> Under a
+                publicly-trusted tailnet cert no CA file is needed; under a self-signed or local-CA
+                tool there is nothing servable. The response body says which case you are in.
+              </div>
+            </div>
+          </li>
+
+          <li class="amp-step">
+            <span class="amp-step__num">4</span>
+            <h2 class="amp-step__title">Verify from the agent's side</h2>
+            <div class="amp-step__body">
+              <ul class="amp-checks">
+                <li class="amp-check" data-state="pass">
+                  <span class="amp-check__mark">&#10003;</span>
+                  <span class="amp-check__text">Reads work &mdash; <strong>/api/services</strong>
+                    returned 14 entries across 2 origins.</span>
+                </li>
+                <li class="amp-check" data-state="pass">
+                  <span class="amp-check__mark">&#10003;</span>
+                  <span class="amp-check__text">Writes are authorised &mdash; a dry-run register
+                    returned <strong>200</strong>, not a 403.</span>
+                </li>
+                <li class="amp-check">
+                  <span class="amp-check__mark">&#8226;</span>
+                  <span class="amp-check__text">Not yet checked: TLS trust. Only applies to a
+                    TLS-served node.</span>
+                </li>
+              </ul>
+              <div class="amp-note">
+                <strong>A redirect to a login page is not a 401.</strong> An unauthenticated caller
+                that gets a <code>3xx</code> reads as unreachable to a probe. If a check fails with
+                a redirect, the token is missing from the request, not wrong.
+              </div>
+            </div>
+          </li>
+        </ol>
+
+        <div class="amp-stack amp-stack--tight">
+          <h2 class="amp-caption">Recent agent activity</h2>
+          <div class="amp-peer">
+            <span class="amp-peer__name">list services</span>
+            <span class="amp-pill amp-pill--ok">200</span>
+            <span class="amp-peer__url">GET /api/services</span>
+            <div class="amp-header__spacer"></div>
+            <span class="amp-peer__url">2m ago</span>
+          </div>
+          <div class="amp-peer">
+            <span class="amp-peer__name">register muxplex-lab</span>
+            <span class="amp-pill amp-pill--ok">201</span>
+            <span class="amp-peer__url">POST /api/services</span>
+            <div class="amp-header__spacer"></div>
+            <span class="amp-peer__url">18m ago</span>
+          </div>
+          <div class="amp-peer" data-unreachable>
+            <span class="amp-peer__name">remove peer lab-nuc</span>
+            <span class="amp-pill amp-pill--err">403</span>
+            <span class="amp-peer__url">DELETE /api/federation/peers/lab-nuc</span>
+            <div class="amp-header__spacer"></div>
+            <span class="amp-peer__url">1h ago</span>
+          </div>
+          <p class="amp-empty">Activity is read from the server's own request log. Nothing here is
+            agent-only &mdash; every call above is available to any HTTP client.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</body>
+</html>

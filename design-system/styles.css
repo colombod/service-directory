@@ -1,0 +1,13 @@
+/* muxplex / Amplifier — global CSS entry point.
+   Only @import lines live here. Values live in tokens/. */
+@import "tokens/color.css";
+@import "tokens/space.css";
+@import "tokens/radius.css";
+@import "tokens/type.css";
+@import "tokens/elevation.css";
+@import "tokens/layer.css";
+@import "tokens/control.css";
+@import "tokens/motion.css";
+@import "tokens/layout.css";
+@import "tokens/amplifier-app.css";
+@import "products/service-directory.css";

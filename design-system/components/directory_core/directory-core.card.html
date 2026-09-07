@@ -1,0 +1,39 @@
+<!-- @dsCard group="Components" viewport="700x190" name="Service Directory core" subtitle="Button, TextInput, Disclosure, EmptyState" -->
+<!DOCTYPE html>
+<html lang="en" data-product="service-directory"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html,body { margin:0; }
+  body { padding:14px 16px; background:var(--bg); color:var(--text); font:14px/1.5 var(--font-ui); }
+  .lbl { font-size:10px; color:var(--text-faint); font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:4px; text-transform:capitalize; }
+  .lb { font-family:var(--mono); font-size:11px; font-weight:600; padding:3px 8px; border-radius:5px; display:inline-block; text-decoration:none; }
+</style></head>
+<body data-product="service-directory">
+  <div class="row">
+    <span class="lbl" style="width:80px">Button</span>
+    <button style="font-family:var(--font-ui);font-weight:600;font-size:14px;color:#fff;background:var(--accent);border:none;border-radius:7px;padding:9px 22px;cursor:pointer">Open here</button>
+    <button style="font-family:var(--font-ui);font-weight:600;font-size:13px;color:var(--text-muted);background:var(--alt);border:1px solid var(--border-strong);border-radius:6px;padding:6px 12px">&#9881; Settings</button>
+    <button style="font-family:var(--font-ui);font-weight:600;font-size:12px;color:var(--text-muted);background:var(--panel);border:1px solid var(--border-strong);border-radius:5px;padding:4px 10px">Reload</button>
+    <button style="border:none;background:none;color:var(--text-faint);font-size:16px;padding:0 3px;line-height:1">&times;</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <span class="lbl" style="width:80px">TextInput</span>
+    <span style="position:relative;display:inline-block;width:220px">
+      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:13px;height:13px;background:var(--text-faint);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='21' y2='21'/%3E%3C/svg%3E") center/contain no-repeat"></span>
+      <input placeholder="Filter&#8230;" style="width:100%;padding:7px 10px 7px 28px;font-size:13px;color:var(--text);background:var(--alt);border:1px solid var(--border-strong);border-radius:6px">
+    </span>
+    <input value="focused" style="width:180px;padding:9px 12px;font-size:13.5px;color:var(--text);background:var(--panel);border:1px solid var(--accent);border-radius:7px;box-shadow:var(--ring-focus)">
+  </div>
+  <div class="row" style="margin-top:12px;align-items:flex-start">
+    <span class="lbl" style="width:80px">Panels</span>
+    <div style="padding:14px 18px;background:var(--alt);border-top:1px solid var(--border);flex:1">
+      <span style="font-size:13px;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:7px"><span style="font-size:15px;line-height:1;color:var(--accent)">+</span>Register a service</span>
+    </div>
+    <div style="border:1px dashed var(--border-strong);border-radius:10px;padding:18px;text-align:center;color:var(--text-muted);background:var(--alt);flex:1">
+      <p style="font-size:15px;font-weight:600;color:var(--text);margin:0 0 4px">No services configured</p>
+      <p style="margin:0;font-size:13px">Add services to your config file.</p>
+    </div>
+  </div>
+</body></html>

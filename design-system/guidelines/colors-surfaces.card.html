@@ -1,0 +1,17 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Surfaces" subtitle="A three-step luminance ladder — higher is nearer the eye" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div class="row">
+    <div class="sw" style="flex:1"><div class="chipbox" style="background:#0D1117"></div><span class="lbl">--bg</span><span class="val">#0D1117 · page</span></div><div class="sw" style="flex:1"><div class="chipbox" style="background:#10131C"></div><span class="lbl">--bg-secondary</span><span class="val">#10131C · tiles, panels, menus</span></div><div class="sw" style="flex:1"><div class="chipbox" style="background:#1A1F2B"></div><span class="lbl">--bg-surface</span><span class="val">#1A1F2B · raised / hover fill</span></div><div class="sw" style="flex:1"><div class="chipbox" style="background:rgba(13,17,23,.85)"></div><span class="lbl">--bg-overlay</span><span class="val">rgba(13,17,23,.85) · scrim</span></div>
+  </div></body></html>

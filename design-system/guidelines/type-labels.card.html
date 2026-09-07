@@ -1,0 +1,21 @@
+<!-- @dsCard group="Type" viewport="700x160" name="Weights & captions" subtitle="Uppercase captions carry the tracking; body text never does" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div style="display:grid;gap:8px">
+    <div class="row" style="align-items:baseline;gap:18px">
+      <span style="font-weight:400">400 regular</span><span style="font-weight:500">500 tile name</span><span style="font-weight:600">600 semibold</span><span style="font-weight:700">700 bell count</span>
+    </div>
+    <div><span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">Sidebar caption</span> <span class="val">11px / 600 / .06em</span></div>
+    <div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim)">Device header</span> <span class="val">10px / .08em / --text-dim</span></div>
+  </div></body></html>

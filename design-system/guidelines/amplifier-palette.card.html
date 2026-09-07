@@ -1,0 +1,26 @@
+<!-- @dsCard group="Amplifier" viewport="700x200" name="Palette from the mark" subtitle="Three ring colours sampled from amplifier-icon-48.png — the whole brand" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--amp-page); color:var(--amp-ink);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; flex:1; min-width:88px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--amp-line); }
+  .lbl { font-size:var(--text-xs); color:var(--amp-ink-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--amp-ink-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--amp-ink-dim); margin-top:10px; }
+</style></head>
+<body>
+  <div class="row" style="align-items:center;gap:16px">
+    <img src="../assets/amplifier/amplifier-icon-48.png" alt="Amplifier" width="48" height="48">
+    <div class="row" style="flex:1">
+      <div class="sw"><div class="chipbox" style="background:var(--amp-navy)"></div><span class="lbl">--amp-navy</span><span class="val">#002880 · deep ring</span></div>
+      <div class="sw"><div class="chipbox" style="background:var(--amp-blue)"></div><span class="lbl">--amp-blue</span><span class="val">#0060E0 · mid ring</span></div>
+      <div class="sw"><div class="chipbox" style="background:var(--amp-azure)"></div><span class="lbl">--amp-azure</span><span class="val">#08B0F8 · interactive</span></div>
+      <div class="sw"><div class="chipbox" style="background:var(--amp-violet)"></div><span class="lbl">--amp-violet</span><span class="val">#5018D0 · agent / attention</span></div>
+    </div>
+  </div>
+  <p class="note">Sampled by pixel count from the mark. No fourth hue was invented; green/amber/red are status only.</p>
+</body></html>

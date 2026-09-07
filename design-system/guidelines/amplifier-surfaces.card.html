@@ -1,0 +1,27 @@
+<!-- @dsCard group="Amplifier" viewport="700x175" name="Surfaces & ink" subtitle="A navy-tinted ladder, so the mark sits on its own family" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--amp-page); color:var(--amp-ink);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; flex:1; min-width:88px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--amp-line); }
+  .lbl { font-size:var(--text-xs); color:var(--amp-ink-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--amp-ink-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--amp-ink-dim); margin-top:10px; }
+</style></head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page)"></div><span class="lbl">--amp-page</span><span class="val">#0A0E18</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-raised)"></div><span class="lbl">--amp-raised</span><span class="val">#101728 · tiles, panels</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-hover)"></div><span class="lbl">--amp-hover</span><span class="val">#18213A · hover fill</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-content)"></div><span class="lbl">--amp-content</span><span class="val">#05070C · content well</span></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink)">Primary</div><span class="val">--amp-ink #EDF2FF · 16.8:1</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink-muted)">Secondary</div><span class="val">--amp-ink-muted · 6.4:1 AA</span></div>
+    <div class="sw"><div class="chipbox" style="background:var(--amp-page);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink-dim)">Decorative</div><span class="val">--amp-ink-dim · never alone</span></div>
+  </div>
+</body></html>

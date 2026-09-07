@@ -1,0 +1,49 @@
+<!-- @dsCard group="muxplex" viewport="1280x760" -->
+<!-- @startingPoint section="muxplex" subtitle="Session grid dashboard with rail, settings and agent panel" viewport="1280x760" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>muxplex — UI kit</title>
+<link rel="icon" href="../../assets/branding/favicons/favicon-32.png">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: var(--text-md); overflow: hidden; }
+  #root { height: 100vh; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); }
+  @keyframes bell-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.5; transform:scale(.8); } }
+  @keyframes toast-in { from { opacity:0; transform:translate(-50%,8px); } to { opacity:1; transform:translate(-50%,0); } }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// Load the kit's screen files in order, transform JSX, and evaluate each in
+// global scope so their function declarations are shared across files.
+(async function () {
+  const files = ["data.js", "Chrome.jsx", "SessionGrid.jsx", "Overlays.jsx", "App.jsx"];
+  for (const name of files) {
+    const src = await (await fetch(name)).text();
+    // sourceType "script" keeps the output non-strict, so each file's function
+    // declarations land on the global scope and the next file can see them.
+    const out = Babel.transform(src, {
+      presets: [["react", { runtime: "classic" }]],
+      sourceType: "script",
+      filename: name,
+    }).code;
+    (0, eval)(out);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+/* TYPE — no webfont is loaded by the app; the stacks below are what ships.
+   Urbanist 700 is used ONLY in the brand wordmark SVGs, never in the UI.
+   Measured scale: 13/12/11px are 83 of 125 font-size declarations (66%).
+   px, not rem — a known limitation, recorded in DESIGN_LANGUAGE §7.5. */
+:root {
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', 'Menlo', monospace;
+  /* Brand only: the wordmark and lockup SVGs set Urbanist 700. */
+  --font-brand: 'Urbanist', system-ui, sans-serif;
+
+  --text-2xs: 10px;  /* monospace tile preview; micro labels */
+  --text-xs:  11px;  /* dense metadata, badges, timestamps */
+  --text-sm:  12px;  /* secondary labels */
+  --text-md:  13px;  /* DEFAULT UI text */
+  --text-lg:  14px;  /* emphasis; terminal body */
+  --text-xl:  16px;  /* the largest size a dense tool should need */
+
+  --weight-regular: 400;
+  --weight-medium: 500;  /* tile name */
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-caps: 0.06em;  /* sidebar captions */
+  --tracking-caps-wide: 0.08em; /* device headers */
+  --leading-tight: 1;
+  --leading-preview: 1.0;   /* terminal preview lines */
+  --leading-ui: 1.4;
+}

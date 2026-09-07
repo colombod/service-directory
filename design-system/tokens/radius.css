@@ -1,0 +1,8 @@
+/* RADIUS — 4px is 52 of 83 border-radius declarations in style.css (63%).
+   8px and 12px are the only other values with real usage. */
+:root {
+  --radius-sm: 4px;     /* default. Controls, tiles, cards, inputs. */
+  --radius-md: 8px;     /* menus, popovers, dialogs */
+  --radius-lg: 12px;    /* sheets — the large mobile-anchored surfaces */
+  --radius-pill: 999px; /* badges and pills only */
+}

@@ -1,0 +1,8 @@
+/* MOTION — durations are short because this is a monitoring tool: motion
+   confirms a state change, it never performs. style.css honours
+   prefers-reduced-motion in its own section; do not re-implement it here. */
+:root {
+  --t-fast: 150ms ease;         /* hover, focus, colour change */
+  --t-fade: 200ms ease;         /* appear / disappear */
+  --t-zoom: 250ms ease-in-out;  /* tile expand / collapse, sheet up */
+}

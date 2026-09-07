@@ -1,0 +1,28 @@
+<!-- @dsCard group="Space & Shape" viewport="700x180" name="Control metrics" subtitle="48×48 is the adopted touch floor and is not negotiable" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div class="row" style="align-items:center;gap:16px">
+    <div style="width:48px;height:48px;border:1px dashed var(--accent);border-radius:4px;display:flex;align-items:center;justify-content:center">
+      <div style="width:26px;height:22px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:4px"></div>
+    </div>
+    <div style="display:grid;gap:4px" class="val">
+      <span><b style="color:var(--text)">--touch-min 48px</b> — hit area floor, any pointer (visual size may be smaller)</span>
+      <span><b style="color:var(--text)">--header-height 44px</b> — app header, visual height only</span>
+      <span><b style="color:var(--text)">--control-pad-y 4px / --control-pad-x 10px</b> — the one deliberate off-scale value</span>
+      <span><b style="color:var(--text)">--control-gap 6px</b> — icon to label</span>
+    </div>
+  </div>
+  <div style="margin-top:12px"><span class="lbl">focus ring</span>
+    <button style="margin-left:10px;background:transparent;border:none;color:var(--accent);font-family:var(--font-ui);font-size:13px;padding:4px 10px;border-radius:4px;outline:2px solid var(--accent);outline-offset:2px">focused control</button>
+  </div></body></html>

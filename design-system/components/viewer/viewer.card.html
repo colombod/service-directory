@@ -1,0 +1,40 @@
+<!-- @dsCard group="Components" viewport="700x330" name="Service Directory viewer" subtitle="ViewerWelcome, ViewerHeader, ServiceDetail, ViewerFallback, JsonTree" -->
+<!DOCTYPE html>
+<html lang="en" data-product="service-directory"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  html,body { margin:0; }
+  body { padding:14px 16px; background:var(--bg); color:var(--text); font:14px/1.5 var(--font-ui); }
+  .lbl { font-size:10px; color:var(--text-faint); font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:4px; text-transform:capitalize; }
+  .lb { font-family:var(--mono); font-size:11px; font-weight:600; padding:3px 8px; border-radius:5px; display:inline-block; text-decoration:none; }
+</style></head>
+<body data-product="service-directory">
+  <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--alt)">
+    <span style="font-weight:600;font-size:14px;flex:1">Resolve</span>
+    <button style="border:1px solid var(--border-strong);background:var(--panel);color:var(--text-muted);border-radius:5px;padding:4px 10px;font-size:12px">Reload</button>
+    <a href="#" style="font-size:12px;color:var(--accent);text-decoration:none">open in new tab &#8599;</a>
+    <button style="border:1px solid var(--border-strong);background:var(--panel);color:var(--text-muted);border-radius:5px;padding:4px 10px;font-size:12px">Close</button>
+  </div>
+  <div style="display:flex;gap:0">
+    <div style="flex:1;padding:18px 20px;border-right:1px solid var(--border)">
+      <h2 style="font-size:20px;font-weight:700;margin:0 0 8px;letter-spacing:-.01em">Resolve</h2>
+      <p style="color:var(--text-muted);font-size:14px;margin:0 0 14px;line-height:1.5">Amplifier Resolve dot-graph pipeline runner</p>
+      <div style="margin-bottom:10px;font-size:13px"><span style="color:var(--text-faint);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-right:8px">Health</span><span style="font-weight:600">up</span></div>
+      <div style="margin-bottom:10px;font-size:13px"><span style="color:var(--text-faint);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-right:8px">Open externally</span><a href="#" style="font-size:12px;color:var(--accent);border:1px solid var(--border-strong);padding:3px 8px;border-radius:5px;text-decoration:none;margin-right:6px">Tailnet</a><a href="#" style="font-size:12px;color:var(--accent);border:1px solid var(--border-strong);padding:3px 8px;border-radius:5px;text-decoration:none">LAN</a></div>
+      <button style="margin-top:12px;font-size:14px;font-weight:600;color:#fff;background:var(--accent);border:none;border-radius:7px;padding:9px 22px">Open here</button>
+    </div>
+    <div style="flex:1;padding:18px 20px;font-family:var(--mono);font-size:13px">
+      <div><span style="color:var(--accent);font-weight:600">status: </span><span style="color:var(--up)">"ok"</span></div>
+      <div><span style="color:var(--accent);font-weight:600">queued: </span><span style="color:var(--json-num)">3</span></div>
+      <div><span style="color:var(--accent);font-weight:600">degraded: </span><span style="color:var(--json-bool)">false</span></div>
+      <div><span style="color:var(--accent);font-weight:600">last_error: </span><span style="color:var(--text-faint);font-style:italic">null</span></div>
+      <div style="margin-top:14px;padding:14px;border-top:1px solid var(--border);text-align:center">
+        <p style="font-size:16px;font-weight:600;margin:0 0 6px">Grafana</p>
+        <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px">This service cannot be embedded (X-Frame-Options or CSP frame-ancestors).</p>
+        <a href="#" style="font-size:14px;font-weight:600;color:var(--accent);border:1px solid var(--accent);padding:8px 18px;border-radius:7px;text-decoration:none">Open Grafana in a new tab &#8599;</a>
+      </div>
+    </div>
+  </div>
+</body></html>

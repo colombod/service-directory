@@ -1,0 +1,47 @@
+<!-- @dsCard group="Amplifier" viewport="1280x760" -->
+<!-- @startingPoint section="Amplifier" subtitle="App registry restyled on the Amplifier application rules" viewport="1280x760" -->
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier">
+<head>
+<meta charset="utf-8">
+<title>App registry — Amplifier rules</title>
+<link rel="icon" href="../../assets/amplifier/amplifier-icon-32.png">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--amp-page); color: var(--amp-ink);
+         font-family: var(--font-ui); font-size: var(--text-md); overflow: hidden; }
+  #root { height: 100vh; }
+  button { font-family: inherit; }
+  a { color: var(--amp-azure); text-decoration: none; }
+  a:hover { color: var(--amp-azure-hover); }
+  ::placeholder { color: var(--amp-ink-dim); opacity: 1; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--amp-line); border-radius: 999px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes amp-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.55; transform:scale(.82); } }
+  @keyframes amp-toast { from { opacity:0; transform:translate(-50%,8px); } to { opacity:1; transform:translate(-50%,0); } }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body data-brand="amplifier">
+<div id="root"></div>
+<script>
+(async function () {
+  const files = ["data.js", "Registry.jsx", "Pane.jsx", "Settings.jsx", "App.jsx"];
+  for (const name of files) {
+    const src = await (await fetch(name)).text();
+    const out = Babel.transform(src, {
+      presets: [["react", { runtime: "classic" }]],
+      sourceType: "script",
+      filename: name,
+    }).code;
+    (0, eval)(out);
+  }
+})();
+</script>
+</body>
+</html>

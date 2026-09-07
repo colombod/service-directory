@@ -1,0 +1,14 @@
+/* LAYOUT CONSTANTS — specific measurements of specific things, kept here
+   only so there is one place to look. */
+:root {
+  --tile-height: 300px;
+  --tile-min-width: 360px;   /* style.css overrides this inside a media query */
+  --grid-gap: var(--space-md);      /* 8px */
+  --grid-padding: var(--space-xl);  /* 16px */
+  --sidebar-width: 200px;
+  --sidebar-item-height: 120px;
+  --sidebar-gap: var(--space-md);
+  --tile-header-height: 32px;
+  --sheet-max-height: 70vh;
+  --breakpoint-mobile: 599px;
+}

@@ -1,0 +1,33 @@
+<!-- @dsCard group="Amplifier" viewport="700x190" name="Accent & attention states" subtitle="Azure means interactive; violet means the app wants you" -->
+<!DOCTYPE html>
+<html lang="en" data-brand="amplifier"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--amp-page); color:var(--amp-ink);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; flex:1; min-width:88px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--amp-line); }
+  .lbl { font-size:var(--text-xs); color:var(--amp-ink-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--amp-ink-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--amp-ink-dim); margin-top:10px; }
+</style></head>
+<body data-brand="amplifier">
+  <div class="row" style="align-items:center;gap:12px">
+    <span class="lbl" style="width:78px">rest</span>
+    <button style="background:transparent;border:none;color:var(--amp-azure);font-family:var(--font-ui);font-size:13px;padding:4px 10px;border-radius:4px">Open</button>
+    <span class="lbl">hover</span>
+    <button style="background:transparent;border:none;color:var(--amp-azure-hover);font-family:var(--font-ui);font-size:13px;padding:4px 10px;border-radius:4px">Open</button>
+    <span class="lbl">focus</span>
+    <button style="background:transparent;border:none;color:var(--amp-azure-hover);font-family:var(--font-ui);font-size:13px;padding:4px 10px;border-radius:4px;outline:2px solid var(--amp-azure);outline-offset:2px">Open</button>
+    <span class="lbl">held</span>
+    <button style="background:var(--amp-azure-dim);border:1px solid var(--amp-azure);color:var(--amp-azure);font-family:var(--font-ui);font-size:13px;padding:4px 10px;border-radius:4px">Open</button>
+  </div>
+  <div class="row" style="margin-top:14px;gap:10px">
+    <div style="flex:1;height:44px;border-radius:4px;background:var(--amp-raised);border:1px solid var(--amp-line);border-left:3px solid var(--amp-line);display:flex;align-items:center;padding:0 10px" class="lbl">idle — border only</div>
+    <div style="flex:1;height:44px;border-radius:4px;background:var(--amp-raised);border:1px solid var(--amp-azure);border-left:3px solid var(--amp-azure);display:flex;align-items:center;padding:0 10px;color:var(--amp-ink)">selected — azure edge</div>
+    <div style="flex:1;height:44px;border-radius:4px;background:var(--amp-raised);border:1px solid var(--amp-violet-edge);border-left:3px solid var(--amp-violet);box-shadow:0 0 0 1px var(--amp-violet-edge), inset 0 0 12px var(--amp-violet-soft);display:flex;align-items:center;gap:6px;padding:0 10px;color:var(--amp-ink)">
+      <span style="min-width:16px;height:16px;border-radius:8px;background:var(--amp-violet);color:#fff;font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">2</span>needs you
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,43 @@
+<!-- @dsCard group="Service Directory" viewport="1280x720" -->
+<!-- @startingPoint section="Service Directory" subtitle="Two-pane service catalogue with in-app viewer" viewport="1280x720" -->
+<!DOCTYPE html>
+<html lang="en" data-product="service-directory">
+<head>
+<meta charset="utf-8">
+<title>Service Directory — UI kit</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--sd-bg); color: var(--sd-text);
+         font: 14px/1.5 var(--sd-font-ui); -webkit-font-smoothing: antialiased; overflow: hidden; }
+  #root { height: 100vh; }
+  a { color: var(--sd-accent); text-decoration: none; }
+  a:hover { color: var(--sd-accent); text-decoration: underline; }
+  ::placeholder { color: var(--sd-text-faint); opacity: 1; }
+  button { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// Load the kit's screen files in order, transform JSX, and evaluate each in
+// global (non-strict) scope so their declarations are shared across files.
+(async function () {
+  const files = ["data.js", "Catalogue.jsx", "Viewer.jsx", "SettingsOverlay.jsx", "App.jsx"];
+  for (const name of files) {
+    const src = await (await fetch(name)).text();
+    const out = Babel.transform(src, {
+      presets: [["react", { runtime: "classic" }]],
+      sourceType: "script",
+      filename: name,
+    }).code;
+    (0, eval)(out);
+  }
+})();
+</script>
+</body>
+</html>

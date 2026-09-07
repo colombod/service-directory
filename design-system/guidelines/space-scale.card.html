@@ -1,0 +1,18 @@
+<!-- @dsCard group="Space & Shape" viewport="700x150" name="Space scale" subtitle="T-shirt names on purpose — numeric names collided at different values" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:14px 16px; background:var(--bg); color:var(--text);
+         font-family:var(--font-ui); font-size:var(--text-md); }
+  .row { display:flex; gap:var(--space-md); flex-wrap:wrap; align-items:flex-start; }
+  .sw { display:flex; flex-direction:column; gap:6px; min-width:96px; }
+  .chipbox { height:46px; border-radius:var(--radius-sm); border:1px solid var(--border); }
+  .lbl { font-size:var(--text-xs); color:var(--text-muted); font-family:var(--font-mono); }
+  .val { font-size:var(--text-2xs); color:var(--text-dim); font-family:var(--font-mono); }
+  .note { font-size:var(--text-xs); color:var(--text-dim); margin-top:10px; }
+</style></head>
+<body><div class="row" style="align-items:flex-end">
+    <div class="sw" style="align-items:center;min-width:70px"><div style="width:2px;height:56px;background:var(--accent)"></div><span class="lbl">2xs</span><span class="val">2px</span></div><div class="sw" style="align-items:center;min-width:70px"><div style="width:4px;height:56px;background:var(--accent)"></div><span class="lbl">xs</span><span class="val">4px</span></div><div class="sw" style="align-items:center;min-width:70px"><div style="width:6px;height:56px;background:var(--accent)"></div><span class="lbl">sm</span><span class="val">6px</span></div><div class="sw" style="align-items:center;min-width:70px"><div style="width:8px;height:56px;background:var(--accent)"></div><span class="lbl">md</span><span class="val">8px</span></div><div class="sw" style="align-items:center;min-width:70px"><div style="width:12px;height:56px;background:var(--accent)"></div><span class="lbl">lg</span><span class="val">12px</span></div><div class="sw" style="align-items:center;min-width:70px"><div style="width:16px;height:56px;background:var(--accent)"></div><span class="lbl">xl</span><span class="val">16px</span></div><div class="sw" style="align-items:center;min-width:70px"><div style="width:24px;height:56px;background:var(--accent)"></div><span class="lbl">2xl</span><span class="val">24px</span></div>
+  </div>
+  <p class="note">6px is the app's real unit between related items; 8px between components.</p></body></html>
