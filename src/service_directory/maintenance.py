@@ -70,8 +70,8 @@ def default_capability(source: InstallSource) -> str | None:
         return "Git install metadata is missing a supported repository URL."
     if platform.system() != "Linux":
         return "Remote self-update currently requires a Linux systemd user service; use the CLI here."
-    if not shutil.which("uv") or not shutil.which("systemd-run"):
-        return "uv and systemd-run must be available on the service PATH."
+    if any(not shutil.which(tool) for tool in ("uv", "systemd-run", "systemctl")):
+        return "uv, systemd-run, and systemctl must be available on the service PATH."
     try:
         version = subprocess.run(["systemd-run", "--version"], capture_output=True,
                                  text=True, timeout=2, check=False)
@@ -148,10 +148,21 @@ def check_source(source: InstallSource, pypi_checker=default_update_checker, git
 
 
 def launch_worker(state_dir: str, job_id: str) -> None:
-    """Run outside service-directory.service, never in its killed cgroup."""
+    """Run outside the directory, with recovery owned by the systemd manager.
+
+    In-process exception handling cannot recover after SIGKILL or RuntimeMaxSec.
+    ExecStopPost runs after systemd has terminated the worker's entire cgroup,
+    including a stuck installer, and attempts to start the original directory
+    unit even if the Python environment has been replaced or broken. The fixed
+    systemctl command uses systemd's standard executable search path, not the
+    uv environment being upgraded. This is a recovery attempt, not a rollback.
+    """
     command = ["systemd-run", "--user", "--collect", "--quiet",
                f"--unit=service-directory-update-{job_id}",
-               "--property=Type=exec", "--property=RuntimeMaxSec=900", "--expand-environment=no"]
+               "--property=Type=exec", "--property=RuntimeMaxSec=900",
+               "--property=KillMode=control-group", "--property=TimeoutStopSec=20",
+               "--property=ExecStopPost=systemctl --user start service-directory.service",
+               "--expand-environment=no"]
     # User-manager units do not inherit the web service's environment. Preserve
     # its install/bind configuration and tool/cache environment deliberately.
     for key in os.environ:

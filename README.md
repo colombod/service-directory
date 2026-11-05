@@ -206,9 +206,12 @@ follow their original branch/HEAD instead of reinstalling the same installed
 commit; deliberately pinned commits stay pinned.
 
 Remote self-update requires a **Linux systemd user service installed as a uv
-tool**, plus `uv` and systemd 254+ (`systemd-run`) on its PATH. A separate transient unit runs
+tool**, plus `uv`, `systemctl`, and systemd 254+ (`systemd-run`) on its PATH. A separate transient unit runs
 the updater so stopping the directory cannot kill the update. Jobs persist
 through restart; success requires a restarted service and fresh HTTP response.
+The systemd manager also attempts to restart the directory after the updater
+exits or is killed, independently of its Python environment. This recovery
+attempt does not provide package rollback; a damaged install may need repair.
 Other deployments report why remote update is unsupported; use
 `service-directory upgrade` / `service-directory doctor` through your SSH
 shortcut. Updating the directory does not update its hosted services.

@@ -314,3 +314,30 @@ def test_regenerate_exception_attempts_recovery_and_stays_failed():
     assert not result.ok
     assert result.steps == ['stop', 'reinstall', 'regenerate_unit', 'recover_service']
     assert calls == ['start']
+
+
+def test_worker_recovery_is_owned_by_systemd_not_the_upgraded_python(tmp_path, monkeypatch):
+    commands = []
+    monkeypatch.setattr('service_directory.maintenance.subprocess.run',
+                        lambda command, **kwargs: commands.append(command) or
+                        subprocess.CompletedProcess(command, 0, '', ''))
+    launch_worker(str(tmp_path), 'b' * 32)
+    command = commands[0]
+    properties = {arg.removeprefix('--property=') for arg in command if arg.startswith('--property=')}
+    # The manager runs ExecStopPost after termination, including a deadline or
+    # SIGKILL. A Python finally/except block cannot substitute for this contract.
+    assert 'RuntimeMaxSec=900' in properties
+    assert 'KillMode=control-group' in properties
+    assert 'TimeoutStopSec=20' in properties
+    assert 'ExecStopPost=systemctl --user start service-directory.service' in properties
+    recovery = next(prop for prop in properties if prop.startswith('ExecStopPost='))
+    assert str(tmp_path) not in recovery
+    assert 'python' not in recovery
+    assert 'service_directory.maintenance' not in recovery
+
+
+def test_capability_requires_systemctl_for_external_recovery(monkeypatch):
+    monkeypatch.setattr('service_directory.maintenance.platform.system', lambda: 'Linux')
+    monkeypatch.setattr('service_directory.maintenance.shutil.which',
+                        lambda tool: None if tool == 'systemctl' else '/usr/bin/' + tool)
+    assert 'systemctl' in default_capability(SOURCE)
