@@ -65,8 +65,14 @@ new top-level page.
   npm, no external assets. Plain inline JS.
 - **Match the existing design system** — same tokens, spacing, and type scale as
   `_render_html`. The values and the component rules are written down in
-  `design-system/` (start with `design-system/AGENTS.md`); the reference pages
-  in `design-system/example/` are the shape to copy. It must read as one
+  `design-system/`. **Read `design-system/AGENTS.md` before writing any UI**, not
+  after: it carries the class map, the lookup table for every token family, and
+  the four-part shape a setup page follows. Look a value up in
+  `design-system/guidelines/` rather than inventing it; the reference pages in
+  `design-system/example/` are the shape to copy. Components read role tokens
+  (`--amp-interactive-*`, `--amp-attention-*`, `--amp-page/-raised/-hover`,
+  `--amp-ink-*`), never brand constants (`--amp-azure`, `--amp-violet`) — that
+  is what lets a surface work in both dark and light. It must read as one
   product.
 - **Preserve existing DOM hooks** that JS and tests depend on: `service-filter`,
   `section.node-group[data-origin]`, `tr.service[data-name]`/`[data-search]`,

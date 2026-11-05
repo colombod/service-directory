@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Amplifier app shell" description="Overview grid of supervised items, Amplifier header with word chrome and the agent button." -->
+<helmet>
+<script src="./ds-base.js"></script>
+<style>*{box-sizing:border-box}html,body{margin:0;height:100%}body{background:var(--amp-page);color:var(--amp-ink);font-family:var(--font-ui);font-size:var(--text-md)}button{font-family:inherit}a{color:var(--amp-interactive);text-decoration:none}a:hover{color:var(--amp-interactive-hover)}::placeholder{color:var(--amp-ink-dim);opacity:1}::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--amp-line);border-radius:999px}::-webkit-scrollbar-track{background:transparent}@keyframes amp-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.82)}}</style>
+</helmet>
+<div data-brand="amplifier" data-theme="{{ theme }}" style="height:100vh;display:flex;flex-direction:column;position:relative;overflow:hidden;background:var(--amp-page);color:var(--amp-ink);font-family:var(--font-ui)">
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpHeader" app-name="Resolve" attention="1" attention-noun="run" hint-size="100%,44px">
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTextControl" hint-size="90px,24px">Recent ▾</x-import>
+</x-import>
+<div style="flex:1;min-height:0;overflow-y:auto;padding:var(--grid-padding)">
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile-min-width),1fr));gap:var(--grid-gap);align-content:start">
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTile" name="service-directory" status="needs you" status-tone="attention" attention="3" summary="Promotion blocked on review — block 3 of 7." preview="· block 3/7  approve promote 0.1.0?
+  waiting on review
+$ amp run --resume" tag="colombod" hint-size="100%,300px"></x-import>
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTile" name="muxplex · frontend" status="ok" status-tone="ok" summary="Build clean. 4 sessions attached across 2 devices." preview="✓ 218 tests, 0 failed
+✓ bundle 84.1 kB
+$ " tag="bkrabach" hint-size="100%,300px"></x-import>
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTile" name="resolve · indexer" status="running" status-tone="accent" summary="Indexing 12 repositories. 3w · 2m elapsed." preview="indexed 8/12 repos
+  dotnet/runtime … 61%
+$ " tag="platform" hint-size="100%,300px"></x-import>
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTile" name="registry · sync" status="unknown" summary="Peer has not been reached since the last restart." preview="fetch peer-02 … no route
+$ " tag="peer-02" hint-size="100%,300px"></x-import>
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTile" name="doctor · nightly" status="failed" status-tone="err" summary="Exited 1: write token missing for remote writes." preview="ERR write token absent
+  (required for tailnet writes)
+$ " tag="ops" hint-size="100%,300px"></x-import>
+<x-import component-from-global-scope="AmplifierDesignSystem_5ffeec.AmpTile" name="pairing · peer-02" status="needs you" status-tone="attention" attention="1" summary="Pairing code issued. Expires in 600s (one-time use)." preview="code 4K2-9QX
+  expires in 600s
+$ " tag="colombod" hint-size="100%,300px"></x-import>
+</div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;,&quot;auto&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;\&quot;dark\&quot; | \&quot;light\&quot; | \&quot;auto\&quot;&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? "dark" };
+  }
+}
+</script>
+</body>
+</html>

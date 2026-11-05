@@ -17,20 +17,20 @@ function ExtLink({ label, url }) {
     <a href={url} target="_blank" rel="noopener" title="Open externally in a new tab"
       style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", padding: "3px 8px",
         borderRadius: "var(--radius-sm)", border: "1px solid var(--amp-line-strong)",
-        marginRight: "var(--space-sm)", display: "inline-block", whiteSpace: "nowrap", color: "var(--amp-azure)" }}>{label} ↗</a>
+        marginRight: "var(--space-sm)", display: "inline-block", whiteSpace: "nowrap", color: "var(--amp-interactive)" }}>{label} ↗</a>
   );
 }
 
 function JsonNode({ k, value, depth }) {
   const isObj = value && typeof value === "object";
   const key = k === undefined ? null
-    : <span style={{ color: "var(--amp-azure)", fontWeight: 600 }}>{k}: </span>;
+    : <span style={{ color: "var(--amp-interactive)", fontWeight: 600 }}>{k}: </span>;
   if (!isObj) {
     let node;
     if (value === null) node = <span style={{ color: "var(--amp-ink-dim)", fontStyle: "italic" }}>null</span>;
     else if (typeof value === "string") node = <span style={{ color: "var(--amp-ok)" }}>"{value}"</span>;
     else if (typeof value === "number") node = <span style={{ color: "var(--amp-warn)" }}>{String(value)}</span>;
-    else node = <span style={{ color: "var(--amp-violet)" }}>{String(value)}</span>;
+    else node = <span style={{ color: "var(--amp-attention-ink)" }}>{String(value)}</span>;
     return <li>{key}{node}</li>;
   }
   const entries = Array.isArray(value) ? value.map((v, i) => [i, v]) : Object.entries(value);
@@ -87,7 +87,7 @@ function Pane({ svc, mode, setMode, onRemove, onToast }) {
           </div>
           <button onClick={() => setMode(svc.view_kind === "json" ? "json"
               : svc.name === "grafana" ? "fallback" : "iframe")}
-            style={{ flexShrink: 0, background: "var(--amp-azure)", border: "none",
+            style={{ flexShrink: 0, background: "var(--amp-interactive)", border: "none",
               borderRadius: "var(--radius-sm)", color: "var(--amp-ink-on-accent)", fontWeight: 600,
               fontSize: "var(--text-md)", padding: "9px 18px", cursor: "pointer", minHeight: 36 }}>
             Open here
@@ -118,8 +118,8 @@ function Pane({ svc, mode, setMode, onRemove, onToast }) {
           {svc.links.map((l) => <ExtLink key={l.label} label={l.label} url={l.url} />)}
         </Meta>
         {svc.attention > 0 ? (
-          <div style={{ marginTop: "var(--space-xl)", border: "1px solid var(--amp-violet-edge)",
-            background: "var(--amp-violet-dim)", borderRadius: "var(--radius-sm)",
+          <div style={{ marginTop: "var(--space-xl)", border: "1px solid var(--amp-attention-edge)",
+            background: "var(--amp-attention-dim)", borderRadius: "var(--radius-sm)",
             padding: "var(--space-lg)", display: "flex", alignItems: "center", gap: "var(--space-lg)" }}>
             <div style={{ flex: 1 }}>
               <p style={{ margin: 0, fontSize: "var(--text-md)", fontWeight: 600 }}>Heartbeat overdue</p>
@@ -174,7 +174,7 @@ function Pane({ svc, mode, setMode, onRemove, onToast }) {
             This service cannot be embedded (X-Frame-Options or CSP frame-ancestors).
           </p>
           <a href={svc.links[0].url} target="_blank" rel="noopener"
-            style={{ fontSize: "var(--text-md)", fontWeight: 600, border: "1px solid var(--amp-azure)",
+            style={{ fontSize: "var(--text-md)", fontWeight: 600, border: "1px solid var(--amp-interactive)",
               borderRadius: "var(--radius-sm)", padding: "9px 18px" }}>
             Open {svc.name} in a new tab ↗
           </a>

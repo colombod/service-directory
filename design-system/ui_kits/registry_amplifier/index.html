@@ -14,8 +14,8 @@
          font-family: var(--font-ui); font-size: var(--text-md); overflow: hidden; }
   #root { height: 100vh; }
   button { font-family: inherit; }
-  a { color: var(--amp-azure); text-decoration: none; }
-  a:hover { color: var(--amp-azure-hover); }
+  a { color: var(--amp-interactive); text-decoration: none; }
+  a:hover { color: var(--amp-interactive-hover); }
   ::placeholder { color: var(--amp-ink-dim); opacity: 1; }
   ::-webkit-scrollbar { width: 10px; }
   ::-webkit-scrollbar-thumb { background: var(--amp-line); border-radius: 999px; }
@@ -31,7 +31,7 @@
 <div id="root"></div>
 <script>
 (async function () {
-  const files = ["data.js", "Registry.jsx", "Pane.jsx", "Settings.jsx", "App.jsx"];
+  const files = ["data.js", "Registry.jsx", "Pane.jsx", "Settings.jsx", "RegistryApp.jsx"];
   for (const name of files) {
     const src = await (await fetch(name)).text();
     const out = Babel.transform(src, {

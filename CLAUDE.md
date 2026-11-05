@@ -8,10 +8,16 @@ session needs up front.
 
 ## Before writing any UI
 
-Read `design-system/AGENTS.md`. Values come from `design-system/tokens/`; look
-anything visual up in `design-system/guidelines/` before inventing it. The pages
-in `design-system/example/` are the shape to copy, and `design-system/ui_kits/`
-has working kits for each product surface.
+Read `design-system/AGENTS.md`. Values come from `design-system/tokens/` (the
+flattened build is `design-system/dist/amplifier.css`); look anything visual up
+in `design-system/guidelines/` before inventing it. The pages in
+`design-system/example/` are the shape to copy, and `design-system/ui_kits/` has
+working kits for each product surface.
+
+Read **role tokens**, never brand constants — `--amp-interactive-*` and
+`--amp-attention-*` rather than `--amp-azure` and `--amp-violet`. The role names
+are what flip between the dark and light themes; a component that reaches for a
+brand constant is correct in one theme and wrong in the other.
 
 The folder carries its own `SKILL.md`, so it is also invocable as a skill by
 name (`amplifier-design`) outside this repo.
