@@ -417,3 +417,92 @@ by `"auto"` when the probe detects a JSON content type). Same SSRF guard as
 ```bash
 curl -s "http://127.0.0.1:8085/api/view-proxy?url=http://100.111.191.22:8000/status"
 ```
+
+## Maintenance and self-update
+
+Maintenance lives in **Settings → Maintenance**. These endpoints operate on
+**this directory node only**, never the applications listed in its catalogue.
+A client must contact each node directly with that node's credentials. A
+federation peer token does not grant write access to remote maintenance.
+
+### `GET /api/maintenance` — read access
+
+Returns a source-aware status without network update checks:
+
+```json
+{"version":"0.1.0","install_kind":"git","update_supported":true,
+ "unsupported_reason":null,"current_revision":"installed-commit",
+ "update_available":null,"latest_revision":null,"latest_version":null,
+ "checked_at":null,"job":null}
+```
+
+`update_available: null` means **unknown**, including unchecked/unreachable
+sources; it must not be displayed as current. Git checks use the original
+PEP 610 `requested_revision` (branch/tag/commit), or `HEAD` for unqualified Git
+installs. Explicit full commit pins remain pinned. `latest_version` is populated
+for index installs; Git installs instead report `latest_revision`, even when the
+package's version string has not changed. Checks are invalidated when the
+installed version/revision changes. The response never exposes repository URLs
+(which may contain credentials) or installer output.
+
+### `POST /api/maintenance/check` — write access
+
+Performs a bounded update check against the **installed source**, persists the
+result, and returns the same status shape. Git uses noninteractive `git
+ls-remote` with a five-second timeout; index checks use the existing two-second
+PyPI lookup. No arbitrary source URL is accepted.
+
+### `POST /api/maintenance/update` — write access
+
+Accepts **no body**. Returns `202` with a durable job:
+
+```json
+{"id":"32-lowercase-hex-characters","status":"queued",
+ "message":"Independent updater queued.","steps":[],
+ "started_at":1793900000.0,"finished_at":null}
+```
+
+The independent worker stops the directory, reinstalls from its installed
+source, regenerates its user service unit, starts it, and verifies that the unit
+is active and a fresh local `/api/instance-info` responds. The directory will
+briefly disconnect; reconnect and poll rather than treating a lost connection as
+success or failure. Installer failure triggers an attempt to restart the
+service, and remains a failed job. This is recovery, not a transactional package
+rollback; inspect `service-directory doctor` if it fails.
+
+Remote self-update is supported for **uv tool installs on Linux managed by the
+installed systemd user service**, with `uv` and systemd 254+ (`systemd-run`) on its PATH. The
+worker runs in a separate transient systemd unit, so stopping the directory
+cannot kill its own updater. Other installations report `update_supported:
+false` with `unsupported_reason`; the macOS launchd/CLI workflow remains
+available. No live deployment is performed merely by checking status.
+
+Failure responses use `{"detail":"..."}`:
+
+- `401`: existing write-access rules reject the request
+- `400`: any request body supplied to update (commands/URLs are not accepted)
+- `409`: another job is active
+- `422`: this deployment cannot safely update itself remotely
+- `503`: the independent worker could not be started (no service changes)
+
+### `GET /api/maintenance/jobs/{id}` — read access
+
+Returns the same durable job shape; `404 {"detail":"unknown update job"}` for
+an unknown/invalid ID. `GET /api/maintenance` includes the latest job, including
+its terminal result after restart. Status is `queued`, `running`, `succeeded`, or
+`failed`. Jobs interrupted beyond the 15-minute worker deadline plus one-minute
+grace are reported as failed by maintenance status; success is never inferred
+from a timeout. State files are private (`0600`, directory `0700`), written
+atomically under the directory's state directory, and retained across restarts.
+
+```bash
+# Read status (add a peer read-token bearer if read access is enabled):
+curl -s http://127.0.0.1:8085/api/maintenance
+# Remote write actions require the node's WRITE token:
+curl -s -X POST http://node:8085/api/maintenance/check \
+  -H "Authorization: Bearer $WRITE_TOKEN"
+curl -s -X POST http://node:8085/api/maintenance/update \
+  -H "Authorization: Bearer $WRITE_TOKEN"
+# After reconnecting following restart:
+curl -s http://127.0.0.1:8085/api/maintenance/jobs/0123456789abcdef0123456789abcdef
+```

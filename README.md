@@ -182,3 +182,36 @@ binding — connectivity checks and the peer-fetch HTTP client are stubbed
 via dependency injection (with additional local-fixture tests exercising
 the real HTTP transport against a `127.0.0.1` server bound to an ephemeral
 port).
+
+## Directory maintenance and self-update
+
+Open **Settings → Maintenance** to see this node's running version/install
+source, check for changes, and update the directory. The native client and
+scripts use the same documented JSON API:
+
+```bash
+curl -s http://127.0.0.1:8085/api/maintenance
+curl -s -X POST http://node:8085/api/maintenance/check \
+  -H "Authorization: Bearer $WRITE_TOKEN"
+curl -s -X POST http://node:8085/api/maintenance/update \
+  -H "Authorization: Bearer $WRITE_TOKEN"
+# Reconnect after the brief restart; inspect the latest durable job:
+curl -s http://127.0.0.1:8085/api/maintenance
+```
+
+Read endpoints follow the existing read-token rules; remote checks/updates
+require the node's **write token**. Updates accept no caller-provided command,
+URL, or ref. `update_available: null` means unknown, not current. Git installations
+follow their original branch/HEAD instead of reinstalling the same installed
+commit; deliberately pinned commits stay pinned.
+
+Remote self-update requires a **Linux systemd user service installed as a uv
+tool**, plus `uv` and systemd 254+ (`systemd-run`) on its PATH. A separate transient unit runs
+the updater so stopping the directory cannot kill the update. Jobs persist
+through restart; success requires a restarted service and fresh HTTP response.
+Other deployments report why remote update is unsupported; use
+`service-directory upgrade` / `service-directory doctor` through your SSH
+shortcut. Updating the directory does not update its hosted services.
+
+See [the maintenance API reference](docs/API.md#maintenance-and-self-update) for
+job schemas, deadlines, error responses, deployment limitations, and recovery.
