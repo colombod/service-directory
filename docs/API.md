@@ -467,11 +467,19 @@ source, regenerates its user service unit, starts it, and verifies that the unit
 is active and a fresh local `/api/instance-info` responds. The directory will
 briefly disconnect; reconnect and poll rather than treating a lost connection as
 success or failure. Installer failure triggers an attempt to restart the
-service, and remains a failed job. This is recovery, not a transactional package
-rollback; inspect `service-directory doctor` if it fails.
+service, and remains a failed job. The transient unit also declares a fixed
+`ExecStopPost=systemctl --user start service-directory.service` recovery command.
+The systemd manager runs this after the worker exits or is killed, including
+when its 15-minute deadline expires. It runs outside the replaced Python
+environment, after terminating any remaining installer processes. Stop and
+recovery commands are bounded to 20 seconds each, within the job's one-minute
+deadline grace. This is an independent restart attempt, not a transactional
+package rollback; a broken installation can still require manual repair.
+Inspect `service-directory doctor` and the transient unit logs if it fails.
 
 Remote self-update is supported for **uv tool installs on Linux managed by the
-installed systemd user service**, with `uv` and systemd 254+ (`systemd-run`) on its PATH. The
+installed systemd user service**, with `uv`, `systemctl`, and systemd 254+
+(`systemd-run`) available on its PATH. The
 worker runs in a separate transient systemd unit, so stopping the directory
 cannot kill its own updater. Other installations report `update_supported:
 false` with `unsupported_reason`; the macOS launchd/CLI workflow remains
