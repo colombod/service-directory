@@ -22,6 +22,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, cast
 
+from packaging.version import InvalidVersion, Version
+
 DEFAULT_DISTRIBUTION_NAME = "service-directory"
 
 
@@ -55,6 +57,7 @@ class InstallSource:
     url: str | None = None
     commit_id: str | None = None
     editable: bool = False
+    requested_revision: str | None = None
 
 
 def detect_install_source(
@@ -115,7 +118,14 @@ def detect_install_source(
         kind = vcs if isinstance(vcs, str) and vcs else "vcs"
         commit_id = vcs_info.get("commit_id")
         commit_id = commit_id if isinstance(commit_id, str) else None
-        return InstallSource(kind=kind, version=version, url=url, commit_id=commit_id)
+        requested = vcs_info.get("requested_revision")
+        # PEP 610 omits requested_revision for an unqualified repository URL:
+        # those installs follow HEAD rather than reinstalling the old commit.
+        requested = requested if isinstance(requested, str) and requested else "HEAD"
+        return InstallSource(
+            kind=kind, version=version, url=url, commit_id=commit_id,
+            requested_revision=requested,
+        )
 
     if url:
         return InstallSource(kind="local", version=version, url=url)
@@ -172,8 +182,12 @@ def check_for_update(
         latest = checker(name, timeout)
     except Exception:  # noqa: BLE001 - defensive: checker itself must never crash doctor
         return None
-    if latest and latest != source.version:
-        return latest
+    if latest:
+        try:
+            if Version(latest) > Version(source.version):
+                return latest
+        except InvalidVersion:
+            pass
     return None
 
 

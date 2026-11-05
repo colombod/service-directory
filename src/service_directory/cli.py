@@ -505,7 +505,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
     """Stop -> reinstall (uv tool) -> regenerate unit -> restart -> verify."""
     from .upgrade import run_upgrade
 
-    result = run_upgrade()
+    result = run_upgrade(recover_on_failure=True)
     print(result.message)
     if result.skipped:
         return 0

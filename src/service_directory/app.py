@@ -27,6 +27,7 @@ import urllib.request
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from . import __version__
 from .auth import require_admin, require_read_access, require_write_access
@@ -63,6 +64,7 @@ from .health import (
 )
 from .identity import load_or_create_identity
 from .pairing import PairingCodeStore
+from .maintenance import Maintenance, MaintenanceError
 from .registry import (
     DynamicService,
     deregister_service,
@@ -874,7 +876,50 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "      });\n"
         "  }\n"
         "\n"
+        '  var maintenanceTimer = null;\n'
+        '  function maintenanceRequest(path, method) {\n'
+        "    return fetch(path, {method: method || 'GET', headers: tokenHeaders()}).then(function(r) {\n"
+        '      return r.json().then(function(data) {\n'
+        "        if (!r.ok) throw new Error(data.detail || ('request failed: ' + r.status));\n"
+        '        return data;\n'
+        '      });\n'
+        '    });\n'
+        '  }\n'
+        '  function renderMaintenance(data) {\n'
+        "    var el = document.getElementById('settings-maintenance-content');\n"
+        '    if (!el) return;\n'
+        "    var availability = data.update_available === true ? 'available' :\n"
+        "      (data.update_available === false ? 'current' : 'unknown (check the installed source)');\n"
+        "    el.textContent = 'Running version: ' + data.version + ' · Install: ' + data.install_kind +\n"
+        "      ' · Update: ' + availability + (data.latest_version ? ' · Latest: ' + data.latest_version : '') +\n"
+        "      (data.latest_revision ? ' · Source revision: ' + data.latest_revision : '') +\n"
+        "      (data.unsupported_reason ? ' · ' + data.unsupported_reason : '') +\n"
+        "      (data.job ? ' · Job: ' + data.job.status + ' — ' + data.job.message : '');\n"
+        "    document.getElementById('settings-update-btn').disabled = !data.update_supported ||\n"
+        "      !!(data.job && (data.job.status === 'queued' || data.job.status === 'running'));\n"
+        '    if (maintenanceTimer) clearTimeout(maintenanceTimer);\n'
+        "    if (data.job && (data.job.status === 'queued' || data.job.status === 'running') && !settingsOverlay.hidden) {\n"
+        '      maintenanceTimer = setTimeout(loadMaintenance, 3000);\n'
+        '    }\n'
+        '  }\n'
+        '  function maintenanceFailure(error) {\n'
+        "    document.getElementById('settings-maintenance-content').textContent =\n"
+        "      'Maintenance request failed: ' + error.message + '. During an update the directory may be restarting; refresh to reconnect.';\n"
+        '  }\n'
+        '  function loadMaintenance() {\n'
+        "    maintenanceRequest('/api/maintenance').then(renderMaintenance).catch(maintenanceFailure);\n"
+        '  }\n'
+        "  document.getElementById('settings-check-update-btn').addEventListener('click', function() {\n"
+        "    maintenanceRequest('/api/maintenance/check', 'POST').then(renderMaintenance).catch(maintenanceFailure);\n"
+        '  });\n'
+        "  document.getElementById('settings-maintenance-refresh-btn').addEventListener('click', loadMaintenance);\n"
+        "  document.getElementById('settings-update-btn').addEventListener('click', function() {\n"
+        "    if (!confirm('Update this directory from its installed source? It will disconnect briefly while restarting.')) return;\n"
+        '    this.disabled = true;\n'
+        "    maintenanceRequest('/api/maintenance/update', 'POST').then(loadMaintenance).catch(maintenanceFailure);\n"
+        '  });\n'
         "  function loadSettings() {\n"
+        "    loadMaintenance();\n"
         "    fetch('/api/settings').then(function(r) { return r.json(); })\n"
         "      .then(renderIdentity)\n"
         "      .catch(function() {\n"
@@ -1360,6 +1405,10 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         'class="settings-tab" data-tab="security" '
         'aria-controls="settings-panel-security" aria-selected="false" tabindex="-1">'
         "Security</button>"
+        '<button type="button" role="tab" id="settings-tab-maintenance" '
+        'class="settings-tab" data-tab="maintenance" '
+        'aria-controls="settings-panel-maintenance" aria-selected="false" tabindex="-1">'
+        "Maintenance</button>"
         "</div>"
         # Panel area -- exactly one child is visible at a time.
         '<div class="settings-panels" id="settings-panels">'
@@ -1436,6 +1485,19 @@ def _render_html(services: list[dict], node_info: list[dict] | None = None) -> s
         "</div>"
         "</div>"
         "</div>"
+        '<div role="tabpanel" id="settings-panel-maintenance" '
+        'aria-labelledby="settings-tab-maintenance" class="settings-tabpanel" hidden>'
+        '<div class="settings-section">'
+        '<h3 class="settings-section-title">Directory Maintenance</h3>'
+        '<p class="pairing-hint">Check and update this directory from its original install source. '
+        'A write token is required for remote checks and updates. Hosted services are managed separately.</p>'
+        '<p id="settings-maintenance-content" role="status">Open Settings to load maintenance status.</p>'
+        '<button id="settings-check-update-btn" class="settings-action-btn">Check for updates</button> '
+        '<button id="settings-update-btn" class="settings-action-btn" disabled>Update directory</button> '
+        '<button id="settings-maintenance-refresh-btn" class="settings-action-btn">Refresh status</button>'
+        '<p class="pairing-hint">After a restart, refresh status to reconnect. '
+        'For unsupported installs use the node shortcut: service-directory upgrade, then service-directory doctor.</p>'
+        '</div></div>'
         "</div>"  # end settings-panels
         "</div>"  # end settings-body
         "</div>"  # end settings-panel
@@ -1552,6 +1614,7 @@ def create_app(
     view_proxy=None,
     pair_with_peer_fn=None,
     peer_info_fetcher: PeerInfoFetcher | None = None,
+    maintenance=None,
 ) -> FastAPI:
     """Build the FastAPI app for a given (already-loaded) config.
 
@@ -1597,6 +1660,7 @@ def create_app(
     app.state.view_proxy = view_proxy
     app.state.pair_with_peer_fn = pair_with_peer_fn
     app.state.peer_info_fetcher = peer_info_fetcher
+    app.state.maintenance = maintenance or Maintenance(app.state.state_dir)
 
     def _static_names() -> set[str]:
         return {svc.name for svc in config.services}
@@ -2014,6 +2078,36 @@ def create_app(
         )
 
     # ---- Settings / federation management API (Tasks 1-4) ------------------
+
+    @app.get("/api/maintenance")
+    def maintenance_status(request: Request) -> JSONResponse:
+        require_read_access(request, app.state.state_dir, config.federation.require_read_token)
+        return JSONResponse(app.state.maintenance.status())
+
+    @app.get("/api/maintenance/jobs/{job_id}")
+    def maintenance_job(job_id: str, request: Request) -> JSONResponse:
+        require_read_access(request, app.state.state_dir, config.federation.require_read_token)
+        job = app.state.maintenance.job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown update job")
+        return JSONResponse(job)
+
+    @app.post("/api/maintenance/check")
+    def maintenance_check(request: Request) -> JSONResponse:
+        require_write_access(request, app.state.state_dir, config.federation.require_write_token)
+        return JSONResponse(app.state.maintenance.check())
+
+    @app.post("/api/maintenance/update")
+    async def maintenance_update(request: Request) -> JSONResponse:
+        require_write_access(request, app.state.state_dir, config.federation.require_write_token)
+        # There are deliberately no caller-configurable command/source fields.
+        if await request.body():
+            raise HTTPException(status_code=400, detail="this endpoint accepts no request body")
+        try:
+            job = await run_in_threadpool(app.state.maintenance.start)
+            return JSONResponse(job, status_code=202)
+        except MaintenanceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     @app.get("/api/settings")
     def api_settings(request: Request) -> JSONResponse:

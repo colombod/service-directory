@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn>=0.29",
     "pyyaml>=6.0",
     "httpx2>=2.12",
+    "packaging>=24",
 ]
 
 [project.scripts]

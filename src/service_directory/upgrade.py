@@ -76,12 +76,16 @@ def reinstall_command_for_source(
       reinstall by name with ``--reinstall``, the existing behavior.
     """
     if source.kind == "git" and source.url:
+        revision = source.requested_revision or source.commit_id
         spec = (
-            f"git+{source.url}@{source.commit_id}"
-            if source.commit_id
+            f"git+{source.url}@{revision}"
+            if revision
             else f"git+{source.url}"
         )
-        return ["uv", "tool", "install", spec, "--force"]
+        command = ["uv", "tool", "install", spec, "--force"]
+        if source.requested_revision:
+            command.append("--refresh")
+        return command
     return ["uv", "tool", "install", "--reinstall", name]
 
 
@@ -104,6 +108,7 @@ def run_upgrade(
     manager_factory: Callable[[], ServiceManager] = get_service_manager,
     runner: CommandRunner = default_runner,
     doctor_verifier: DoctorVerifier | None = None,
+    recover_on_failure: bool = False,
 ) -> UpgradeResult:
     """Run the upgrade sequence: stop -> reinstall -> regenerate unit ->
     restart -> verify.
@@ -128,35 +133,62 @@ def run_upgrade(
     manager = manager_factory()
 
     steps.append("stop")
-    manager.stop()
+    try:
+        stopped = manager.stop()
+    except Exception as exc:
+        return UpgradeResult(ok=False, skipped=False, message=f"Could not stop service: {exc}", steps=steps)
+    if not stopped.ok:
+        return UpgradeResult(
+            ok=False, skipped=False,
+            message="Could not stop service; reinstall was not attempted.", steps=steps,
+        )
 
     steps.append("reinstall")
-    reinstall_result = reinstall_for_source(source, name, runner)
+    try:
+        reinstall_result = reinstall_for_source(source, name, runner)
+    except Exception as exc:
+        reinstall_result = subprocess.CompletedProcess([], 1, "", str(exc))
     if reinstall_result.returncode != 0:
+        recovery = ""
+        if recover_on_failure:
+            steps.append("recover_service")
+            try:
+                recovered = manager.start()
+                recovery = " Service restart attempted: " + recovered.message
+            except Exception as exc:
+                recovery = " Service restart failed: " + str(exc)
         return UpgradeResult(
             ok=False,
             skipped=False,
             message=(
                 "Reinstall failed: "
                 f"{(reinstall_result.stderr or reinstall_result.stdout or '').strip()}"
+                + recovery
             ),
             steps=steps,
         )
 
-    steps.append("regenerate_unit")
-    install_result: ServiceResult = manager.install()
+    try:
+        steps.append("regenerate_unit")
+        install_result: ServiceResult = manager.install()
 
-    steps.append("restart")
-    # `install()` already starts the service; an explicit `start()` here is
-    # a harmless idempotent no-op if it's already running, and recovers if
-    # `install()`'s start failed for a transient reason.
-    start_result: ServiceResult = manager.start()
+        steps.append("restart")
+        # install() starts the service; start() also recovers transient errors.
+        start_result: ServiceResult = manager.start()
 
-    steps.append("verify")
-    if doctor_verifier is not None:
-        verified = doctor_verifier()
-    else:
-        verified = start_result.ok or install_result.ok
+        steps.append("verify")
+        if doctor_verifier is not None:
+            verified = doctor_verifier()
+        else:
+            verified = start_result.ok or install_result.ok
+    except Exception as exc:
+        if recover_on_failure:
+            steps.append("recover_service")
+            try:
+                manager.start()
+            except Exception:
+                pass
+        return UpgradeResult(ok=False, skipped=False, message=f"Upgrade failed: {exc}; run doctor.", steps=steps)
 
     ok = install_result.ok and verified
     return UpgradeResult(
