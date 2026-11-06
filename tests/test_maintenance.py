@@ -748,12 +748,17 @@ def test_localhost_respects_require_write_token(tmp_path):
     assert client.post('/api/maintenance/check').status_code == 401
 
 
-def test_settings_has_maintenance_section_and_same_api_actions(tmp_path):
+def test_settings_has_maintenance_section_and_existing_actions(tmp_path):
     page = TestClient(create_app(config(tmp_path), maintenance=maintenance(tmp_path))).get('/').text
     assert 'id="settings-tab-maintenance"' in page
     assert 'id="settings-panel-maintenance"' in page
+    assert 'id="settings-maintenance-content"' in page
+    assert 'Check for updates' in page
+    assert 'Install update & restart' in page
+    assert 'Refresh status' in page
     assert "maintenanceRequest('/api/maintenance/update', 'POST')" in page
     assert "maintenanceRequest('/api/maintenance/check', 'POST')" in page
+    assert "/api/maintenance/jobs/" in page
     assert 'Hosted services are managed separately' in page
 
 
