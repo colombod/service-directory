@@ -8,11 +8,11 @@ No HTTP request can supply an install URL, ref, executable, or command.
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -22,6 +22,7 @@ import urllib.request
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlparse
 
 from packaging.version import InvalidVersion, Version
@@ -32,6 +33,10 @@ from .service_manager import SystemdUserServiceManager
 from .upgrade import run_upgrade
 
 ACTIVE = {"queued", "running"}
+LOCKING_UNSUPPORTED_REASON = (
+    "Remote self-update API requires Unix file locking support; use the CLI here."
+)
+CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class MaintenanceError(Exception):
@@ -63,18 +68,184 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
-def default_capability(source: InstallSource) -> str | None:
+def _load_fcntl():
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    return fcntl
+
+
+def _resolve_realpath(path: str | Path) -> Path:
+    return Path(path).resolve(strict=False)
+
+
+def _service_show_properties(
+    unit_name: str,
+    *,
+    runner: CommandRunner,
+) -> dict[str, str] | None:
+    try:
+        result = runner(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                unit_name,
+                "-p",
+                "FragmentPath",
+                "-p",
+                "MainPID",
+                "-p",
+                "ControlGroup",
+                "-p",
+                "ExecStart",
+                "-p",
+                "Type",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode:
+        return None
+    properties: dict[str, str] = {}
+    for line in (result.stdout or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        properties[key] = value
+    return properties
+
+
+def _current_process_cgroup(proc_dir: Path) -> str | None:
+    try:
+        lines = (proc_dir / "cgroup").read_text().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        parts = line.split(":", 2)
+        if len(parts) == 3 and parts[2]:
+            return parts[2]
+    return None
+
+
+def _current_process_entrypoint(proc_dir: Path) -> tuple[Path | None, list[str]]:
+    try:
+        raw = (proc_dir / "cmdline").read_bytes()
+    except OSError:
+        return None, []
+    arguments = [
+        part.decode(errors="surrogateescape")
+        for part in raw.split(b"\0")
+        if part
+    ]
+    if not arguments:
+        return None, []
+    entrypoint_index = 0
+    try:
+        executable = _resolve_realpath((proc_dir / "exe").resolve())
+    except OSError:
+        executable = None
+    if executable is not None and len(arguments) > 1:
+        first_argument = _resolve_realpath(arguments[0])
+        if first_argument == executable:
+            entrypoint_index = 1
+    return Path(arguments[entrypoint_index]), arguments[entrypoint_index + 1:]
+
+
+def _execstart_identity(execstart: str) -> tuple[Path | None, list[str]]:
+    path_match = re.search(r"\bpath=(.+?)(?:\s*;|})", execstart)
+    argv_match = re.search(r"\bargv\[\]=(.+?)(?:\s*;|})", execstart)
+    if not path_match or not argv_match:
+        return None, []
+    try:
+        argv = shlex.split(argv_match.group(1).strip())
+    except ValueError:
+        argv = argv_match.group(1).strip().split()
+    return Path(path_match.group(1).strip()), argv
+
+
+def serving_process_identity_reason(
+    *,
+    runner: CommandRunner = subprocess.run,
+    current_pid: int | None = None,
+    proc_root: str | Path = "/proc",
+    manager_factory: Callable[[], SystemdUserServiceManager] = SystemdUserServiceManager,
+) -> str | None:
+    current_pid = os.getpid() if current_pid is None else current_pid
+    manager = manager_factory()
+    expected_unit_path = _resolve_realpath(manager.unit_path)
+    unit_name = getattr(manager, "unit_name", Path(manager.unit_path).name)
+    properties = _service_show_properties(unit_name, runner=runner)
+    if not properties:
+        return "Could not verify the managed service identity."
+    fragment_path = properties.get("FragmentPath")
+    if not fragment_path:
+        return "Could not verify the managed service unit file."
+    if _resolve_realpath(fragment_path) != expected_unit_path:
+        return "This API is only supported when served by the managed service unit file."
+    try:
+        main_pid = int(properties.get("MainPID", "0"))
+    except ValueError:
+        main_pid = 0
+    if main_pid <= 0:
+        return "Could not verify the managed service MainPID."
+    if main_pid != current_pid:
+        return "This API is only supported when served by the managed service process."
+    control_group = properties.get("ControlGroup", "").strip()
+    if not control_group:
+        return "Could not verify the managed service control group."
+    proc_dir = Path(proc_root) / str(current_pid)
+    current_cgroup = _current_process_cgroup(proc_dir)
+    if not current_cgroup:
+        return "Could not verify the managed service control group."
+    if current_cgroup != control_group:
+        return "This API is only supported when served by the managed service control group."
+    execstart_path, execstart_argv = _execstart_identity(properties.get("ExecStart", ""))
+    if execstart_path is None or not execstart_argv:
+        return "Could not verify the managed service ExecStart."
+    if _resolve_realpath(execstart_argv[0]) != _resolve_realpath(execstart_path):
+        return "Could not verify the managed service ExecStart."
+    current_entrypoint, current_arguments = _current_process_entrypoint(proc_dir)
+    if current_entrypoint is None:
+        return "Could not verify the managed service ExecStart."
+    if _resolve_realpath(current_entrypoint) != _resolve_realpath(execstart_path):
+        return "This API is only supported when served by the managed service ExecStart entrypoint."
+    if "serve" not in execstart_argv[1:] or (not current_arguments or current_arguments[0] != "serve"):
+        return "Could not verify the managed service ExecStart."
+    return None
+
+
+def default_capability(
+    source: InstallSource,
+    *,
+    runner: CommandRunner = subprocess.run,
+    current_pid: int | None = None,
+    proc_root: str | Path = "/proc",
+    manager_factory: Callable[[], SystemdUserServiceManager] = SystemdUserServiceManager,
+) -> str | None:
     if source.kind not in {"pypi", "git"}:
         return "This install is not an updatable uv tool; use its checkout or installer."
     if source.kind == "git" and not safe_git_source(source):
         return "Git install metadata is missing a supported repository URL."
+    if _load_fcntl() is None:
+        return LOCKING_UNSUPPORTED_REASON
     if platform.system() != "Linux":
         return "Remote self-update currently requires a Linux systemd user service; use the CLI here."
     if any(not shutil.which(tool) for tool in ("uv", "systemd-run", "systemctl")):
         return "uv, systemd-run, and systemctl must be available on the service PATH."
     try:
-        version = subprocess.run(["systemd-run", "--version"], capture_output=True,
-                                 text=True, timeout=2, check=False)
+        version = runner(
+            ["systemd-run", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
         match = re.match(r"systemd\s+(\d+)", version.stdout)
         if version.returncode or not match or int(match.group(1)) < 254:
             return "Remote self-update requires systemd 254 or later."
@@ -83,9 +254,15 @@ def default_capability(source: InstallSource) -> str | None:
     # A pip/venv install must never accidentally upgrade an unrelated uv tool.
     if not (Path(sys.prefix) / "uv-receipt.toml").is_file():
         return "The running service is not installed in a uv tool environment."
-    if not Path(SystemdUserServiceManager().unit_path).is_file():
+    manager = manager_factory()
+    if not Path(manager.unit_path).is_file():
         return "Install the service-directory systemd user service first."
-    return None
+    return serving_process_identity_reason(
+        runner=runner,
+        current_pid=current_pid,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    )
 
 
 def safe_git_source(source: InstallSource) -> bool:
@@ -95,7 +272,7 @@ def safe_git_source(source: InstallSource) -> bool:
     return parsed.scheme in {"https", "ssh", "git"} and bool(parsed.hostname)
 
 
-def git_revision(source: InstallSource, runner=subprocess.run) -> str | None:
+def git_revision(source: InstallSource, runner: CommandRunner = subprocess.run) -> str | None:
     """Bounded lookup of the configured revision, not an arbitrary HTTP URL."""
     if not safe_git_source(source):
         return None
@@ -190,6 +367,9 @@ class Maintenance:
 
     @contextmanager
     def locked(self):
+        fcntl = _load_fcntl()
+        if fcntl is None:
+            raise MaintenanceError(422, LOCKING_UNSUPPORTED_REASON)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd = os.open(self.directory / "lock", os.O_CREAT | os.O_RDWR, 0o600)
         with os.fdopen(fd, "w") as lock:
@@ -236,14 +416,14 @@ class Maintenance:
         return self.status()
 
     def start(self) -> dict:
+        source = self.source_detector()
+        reason = self.capability(source)
+        if reason:
+            raise MaintenanceError(422, reason)
         with self.locked():
             latest = self.latest_job()
             if latest and latest.get("status") in ACTIVE:
                 raise MaintenanceError(409, "An update job is already active.")
-            source = self.source_detector()
-            reason = self.capability(source)
-            if reason:
-                raise MaintenanceError(422, reason)
             job_id = uuid.uuid4().hex
             job = {"id": job_id, "status": "queued", "message": "Independent updater queued.",
                    "steps": [], "started_at": self.time_fn(), "finished_at": None}
