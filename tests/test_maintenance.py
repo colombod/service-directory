@@ -642,6 +642,70 @@ def test_ambiguous_launch_nonzero_preserves_active_job_until_reconciled(tmp_path
     assert state.job(first['id'])['status'] == 'queued'
 
 
+def test_observed_failed_transient_unit_marks_job_failed_and_allows_retry(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        'service_directory.maintenance.observe_transient_unit',
+        lambda job_id, *, runner=subprocess.run: SimpleNamespace(
+            active_state='failed',
+            sub_state='failed',
+            result='exit-code',
+            main_pid=None,
+            unit_not_found=False,
+        ),
+        raising=False,
+    )
+
+    launches = []
+
+    def launcher(*args):
+        launches.append(args)
+        if len(launches) == 1:
+            raise RuntimeError('Could not start the independent updater; check the systemd user manager.')
+
+    state = maintenance(tmp_path, launcher=launcher)
+    first = state.start()
+
+    assert first['status'] == 'failed'
+    assert first['message'] == 'independent updater exited unsuccessfully; check service status'
+    assert first['finished_at'] is not None
+    assert state.job(first['id'])['status'] == 'failed'
+
+    second = state.start()
+
+    assert second['id'] != first['id']
+    assert second['status'] == 'queued'
+    assert len(launches) == 2
+
+
+def test_observed_deactivating_unit_with_no_mainpid_and_exit_code_remains_active_and_blocks_duplicate_start(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        'service_directory.maintenance.observe_transient_unit',
+        lambda job_id, *, runner=subprocess.run: SimpleNamespace(
+            active_state='deactivating',
+            sub_state='stop-post',
+            result='exit-code',
+            main_pid=None,
+            unit_not_found=False,
+        ),
+        raising=False,
+    )
+
+    def nonzero(*args):
+        raise RuntimeError('Could not start the independent updater; check the systemd user manager.')
+
+    state = maintenance(tmp_path, launcher=nonzero)
+    first = state.start()
+
+    assert first['status'] == 'queued'
+    with pytest.raises(MaintenanceError) as error:
+        state.start()
+    assert error.value.status_code == 409
+    assert state.job(first['id'])['status'] == 'queued'
+
+
 def test_stale_exact_job_read_uses_same_reconciliation_as_latest_job(tmp_path):
     exact_state = maintenance(tmp_path / 'exact', time_fn=lambda: 2000)
     exact_id = 'd' * 32
