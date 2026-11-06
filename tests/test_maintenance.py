@@ -1,10 +1,16 @@
 """Hermetic maintenance contracts: source, auth, durable lifecycle and launch isolation."""
 from __future__ import annotations
 
+import builtins
+import functools
+import importlib.util
 import json
 import subprocess
+import sys
 import threading
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +20,7 @@ from service_directory.config import FederationConfig, HostAddress, RegistryConf
 from service_directory.install_source import InstallSource, check_for_update, detect_install_source
 from service_directory.maintenance import (
     Maintenance, MaintenanceError, atomic_json, check_source, default_capability, git_revision,
-    launch_worker, run_worker,
+    launch_worker, run_worker, serving_process_identity_reason,
 )
 from service_directory.service_manager import ServiceResult
 from service_directory.trust_store import PeerRecord, upsert_peer
@@ -38,6 +44,99 @@ def maintenance(tmp_path, **kwargs):
 def config(tmp_path, **kwargs):
     return RegistryConfig(host_addresses=[HostAddress(label='LAN', host='10.0.0.1')], services=[],
                           federation=FederationConfig(state_dir=str(tmp_path), **kwargs))
+
+
+IDENTITY_CGROUP = '/user.slice/user-1000.slice/user@1000.service/app.slice/service-directory.service'
+
+
+def load_maintenance_module_without_fcntl(monkeypatch):
+    alias = 'service_directory._maintenance_without_fcntl_test'
+    module_path = Path(__file__).resolve().parents[1] / 'src' / 'service_directory' / 'maintenance.py'
+    spec = importlib.util.spec_from_file_location(alias, module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if level == 0 and name == 'fcntl':
+            raise ModuleNotFoundError("No module named 'fcntl'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    sys.modules.pop(alias, None)
+    sys.modules[alias] = module
+    monkeypatch.setattr(builtins, '__import__', fake_import)
+    spec.loader.exec_module(module)
+    return module
+
+
+def write_proc_identity(proc_root: Path, pid: int, *, cgroup: str, entrypoint: Path, serve_arg: str = 'serve'):
+    proc_dir = proc_root / str(pid)
+    proc_dir.mkdir(parents=True, exist_ok=True)
+    (proc_dir / 'cgroup').write_text(f'0::{cgroup}\n')
+    (proc_dir / 'cmdline').write_bytes(
+        b'\0'.join(part.encode() for part in (sys.executable, str(entrypoint), serve_arg)) + b'\0'
+    )
+    (proc_dir / 'exe').symlink_to(sys.executable)
+
+
+def systemd_show_text(*, fragment_path: Path, main_pid: int, control_group: str,
+                      execstart_path: Path, unit_type: str = 'simple', serve_arg: str = 'serve') -> str:
+    return (
+        f'FragmentPath={fragment_path}\n'
+        f'MainPID={main_pid}\n'
+        f'ControlGroup={control_group}\n'
+        f'ExecStart={{ path={execstart_path} ; argv[]={execstart_path} {serve_arg} ; '
+        f'ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid={main_pid} ; '
+        f'code=(null) ; status=0/0 }}\n'
+        f'Type={unit_type}\n'
+    )
+
+
+def make_runner(show_output: str, *, version_output: str = 'systemd 255 (255)'):
+    def runner(command, **kwargs):
+        if command == ['systemd-run', '--version']:
+            return subprocess.CompletedProcess(command, 0, version_output, '')
+        if command[:3] == ['systemctl', '--user', 'show']:
+            return subprocess.CompletedProcess(command, 0, show_output, '')
+        raise AssertionError(f'unexpected command: {command!r}')
+    return runner
+
+
+def build_identity_fixture(tmp_path, *, current_pid: int = 7674, main_pid: int | None = None,
+                           control_group: str = IDENTITY_CGROUP, current_cgroup: str | None = None,
+                           current_entrypoint: Path | None = None, execstart_path: Path | None = None,
+                           fragment_path: Path | None = None, unit_type: str = 'simple',
+                           execstart_serve_arg: str = 'serve'):
+    unit_path = tmp_path / 'service-directory.service'
+    unit_path.write_text('[Service]\n')
+    current_entrypoint = current_entrypoint or (tmp_path / 'service-directory')
+    current_entrypoint.parent.mkdir(parents=True, exist_ok=True)
+    current_entrypoint.write_text('#!/bin/sh\n')
+    execstart_path = execstart_path or current_entrypoint
+    execstart_path.parent.mkdir(parents=True, exist_ok=True)
+    if not execstart_path.exists():
+        execstart_path.write_text('#!/bin/sh\n')
+    fragment_path = fragment_path or unit_path
+    fragment_path.parent.mkdir(parents=True, exist_ok=True)
+    if not fragment_path.exists():
+        fragment_path.write_text('[Service]\n')
+    proc_root = tmp_path / 'proc'
+    write_proc_identity(
+        proc_root,
+        current_pid,
+        cgroup=current_cgroup or control_group,
+        entrypoint=current_entrypoint,
+    )
+    show_output = systemd_show_text(
+        fragment_path=fragment_path,
+        main_pid=main_pid or current_pid,
+        control_group=control_group,
+        execstart_path=execstart_path,
+        unit_type=unit_type,
+        serve_arg=execstart_serve_arg,
+    )
+    manager_factory = lambda: SimpleNamespace(unit_path=str(unit_path), unit_name='service-directory.service')
+    return make_runner(show_output), proc_root, manager_factory, unit_path, current_entrypoint
 
 
 def test_pep610_preserves_requested_branch_and_unqualified_head():
@@ -281,25 +380,187 @@ def test_settings_has_maintenance_section_and_same_api_actions(tmp_path):
     assert 'Hosted services are managed separately' in page
 
 
+def test_maintenance_module_imports_without_fcntl_available(monkeypatch):
+    module = load_maintenance_module_without_fcntl(monkeypatch)
+    assert module.__name__ == 'service_directory._maintenance_without_fcntl_test'
+    assert hasattr(module, 'Maintenance')
+
+
+def test_unsupported_platform_status_and_check_work_and_update_returns_422_without_fcntl(tmp_path, monkeypatch):
+    monkeypatch.setattr('service_directory.maintenance._load_fcntl', lambda: None)
+    launched = []
+    state = Maintenance(
+        str(tmp_path),
+        source_detector=lambda: SOURCE,
+        capability=functools.partial(
+            default_capability,
+            runner=lambda *args, **kwargs: pytest.fail('fcntl-free capability must not shell out'),
+            current_pid=7674,
+            proc_root=tmp_path / 'proc',
+            manager_factory=lambda: SimpleNamespace(
+                unit_path=str(tmp_path / 'service-directory.service'),
+                unit_name='service-directory.service',
+            ),
+        ),
+        checker=lambda source: {'update_available': True, 'latest_revision': NEW, 'latest_version': None},
+        launcher=lambda state_dir, job_id: launched.append((state_dir, job_id)),
+        time_fn=lambda: 1000,
+    )
+
+    @contextmanager
+    def forbidden_lock():
+        raise AssertionError('update should reject before attempting a Unix lock')
+        yield
+
+    state.locked = forbidden_lock
+    job_id = 'c' * 32
+    atomic_json(
+        state.directory / f'{job_id}.json',
+        {'id': job_id, 'status': 'failed', 'message': 'kept readable without fcntl',
+         'steps': [], 'started_at': 1, 'finished_at': 2},
+    )
+    client = TestClient(create_app(config(tmp_path), maintenance=state), client=('127.0.0.1', 1234))
+
+    status = client.get('/api/maintenance')
+    assert status.status_code == 200
+    assert status.json()['update_supported'] is False
+    assert 'locking support' in status.json()['unsupported_reason']
+
+    check = client.post('/api/maintenance/check')
+    assert check.status_code == 200
+    assert check.json()['update_supported'] is False
+    assert check.json()['latest_revision'] == NEW
+
+    exact_job = client.get(f'/api/maintenance/jobs/{job_id}')
+    assert exact_job.status_code == 200
+    assert exact_job.json()['id'] == job_id
+
+    update = client.post('/api/maintenance/update')
+    assert update.status_code == 422
+    assert 'locking support' in update.json()['detail']
+    assert launched == []
+
+
+def test_foreground_process_rejected_even_from_localhost(tmp_path, monkeypatch):
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(tmp_path, main_pid=9001)
+    monkeypatch.setattr('service_directory.maintenance.platform.system', lambda: 'Linux')
+    monkeypatch.setattr('service_directory.maintenance.shutil.which', lambda name: '/usr/bin/' + name)
+    monkeypatch.setattr('service_directory.maintenance.sys.prefix', str(tmp_path))
+    (tmp_path / 'uv-receipt.toml').write_text('')
+    state = Maintenance(
+        str(tmp_path),
+        source_detector=lambda: SOURCE,
+        capability=functools.partial(
+            default_capability,
+            runner=runner,
+            current_pid=7674,
+            proc_root=proc_root,
+            manager_factory=manager_factory,
+        ),
+    )
+    client = TestClient(create_app(config(tmp_path), maintenance=state), client=('127.0.0.1', 1234))
+    response = client.post('/api/maintenance/update')
+    assert response.status_code == 422
+    assert 'managed service' in response.json()['detail']
+
+
+def test_managed_mainpid_process_reports_supported(tmp_path, monkeypatch):
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(tmp_path)
+    monkeypatch.setattr('service_directory.maintenance.platform.system', lambda: 'Linux')
+    monkeypatch.setattr('service_directory.maintenance.shutil.which', lambda name: '/usr/bin/' + name)
+    monkeypatch.setattr('service_directory.maintenance.sys.prefix', str(tmp_path))
+    (tmp_path / 'uv-receipt.toml').write_text('')
+    reason = default_capability(
+        SOURCE,
+        runner=runner,
+        current_pid=7674,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    )
+    assert reason is None
+
+
+def test_identity_rejects_fragment_path_mismatch(tmp_path):
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(
+        tmp_path,
+        fragment_path=tmp_path / 'other.service',
+    )
+    reason = serving_process_identity_reason(
+        runner=runner,
+        current_pid=7674,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    )
+    assert 'unit file' in reason
+
+
+def test_identity_rejects_control_group_mismatch(tmp_path):
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(
+        tmp_path,
+        current_cgroup='/user.slice/user-1000.slice/user@1000.service/app.slice/foreground.scope',
+    )
+    reason = serving_process_identity_reason(
+        runner=runner,
+        current_pid=7674,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    )
+    assert 'control group' in reason
+
+
+def test_identity_rejects_execstart_mismatch(tmp_path):
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(
+        tmp_path,
+        execstart_path=tmp_path / 'other-entrypoint',
+    )
+    reason = serving_process_identity_reason(
+        runner=runner,
+        current_pid=7674,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    )
+    assert 'ExecStart' in reason
+
+
+def test_identity_does_not_reject_custom_unit_type_when_other_identity_matches(tmp_path):
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(tmp_path, unit_type='notify')
+    reason = serving_process_identity_reason(
+        runner=runner,
+        current_pid=7674,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    )
+    assert reason is None
+
+
 def test_capability_requires_managed_uv_install_and_supported_systemd(tmp_path, monkeypatch):
     monkeypatch.setattr('service_directory.maintenance.platform.system', lambda: 'Linux')
     monkeypatch.setattr('service_directory.maintenance.shutil.which', lambda name: '/usr/bin/' + name)
     monkeypatch.setattr('service_directory.maintenance.sys.prefix', str(tmp_path))
-    monkeypatch.setattr('service_directory.maintenance.subprocess.run',
-                        lambda *args, **kwargs: subprocess.CompletedProcess([], 0, 'systemd 255 (255)', ''))
-    assert 'uv tool environment' in default_capability(SOURCE)
+    version_runner = lambda *args, **kwargs: subprocess.CompletedProcess([], 0, 'systemd 255 (255)', '')
+    assert 'uv tool environment' in default_capability(SOURCE, runner=version_runner)
     (tmp_path / 'uv-receipt.toml').write_text('')
-    class Manager:
-        unit_path = str(tmp_path / 'directory.service')
-    monkeypatch.setattr('service_directory.maintenance.SystemdUserServiceManager', Manager)
-    assert 'Install the' in default_capability(SOURCE)
-    Path(Manager.unit_path).write_text('')
-    assert default_capability(SOURCE) is None
-    monkeypatch.setattr('service_directory.maintenance.subprocess.run',
-                        lambda *args, **kwargs: subprocess.CompletedProcess([], 0, 'systemd 249 (249)', ''))
-    assert '254' in default_capability(SOURCE)
+    missing_manager_factory = lambda: SimpleNamespace(
+        unit_path=str(tmp_path / 'directory.service'),
+        unit_name='service-directory.service',
+    )
+    assert 'Install the' in default_capability(
+        SOURCE,
+        runner=version_runner,
+        manager_factory=missing_manager_factory,
+    )
+    runner, proc_root, manager_factory, _, _ = build_identity_fixture(tmp_path)
+    assert default_capability(
+        SOURCE,
+        runner=runner,
+        current_pid=7674,
+        proc_root=proc_root,
+        manager_factory=manager_factory,
+    ) is None
+    low_version_runner = lambda *args, **kwargs: subprocess.CompletedProcess([], 0, 'systemd 249 (249)', '')
+    assert '254' in default_capability(SOURCE, runner=low_version_runner)
     monkeypatch.setattr('service_directory.maintenance.platform.system', lambda: 'Darwin')
-    assert 'CLI' in default_capability(SOURCE)
+    assert 'CLI' in default_capability(SOURCE, runner=version_runner)
 
 
 def test_regenerate_exception_attempts_recovery_and_stays_failed():
