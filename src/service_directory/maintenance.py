@@ -21,8 +21,9 @@ import time
 import urllib.request
 import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 from urllib.parse import urlparse
 
 from packaging.version import InvalidVersion, Version
@@ -37,6 +38,32 @@ LOCKING_UNSUPPORTED_REASON = (
     "Remote self-update API requires Unix file locking support; use the CLI here."
 )
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
+JobRecord = dict[str, object]
+LAUNCH_FAILED_MESSAGE = "Could not start the independent updater; no service changes were made."
+RUNNING_MESSAGE = "Updating; the directory may disconnect while its service restarts."
+SUCCESS_MESSAGE = "Update completed and the restarted directory responded."
+FAILED_MESSAGE = "Update did not complete. Check service-directory logs/doctor on this node."
+WORKER_FAILED_MESSAGE = "Updater failed. Check the directory service on this node."
+STALE_JOB_MESSAGE = (
+    "Updater exceeded its deadline or was interrupted; inspect this node before retrying."
+)
+
+
+@dataclass(frozen=True)
+class TransientUnitObservation:
+    active_state: str | None
+    sub_state: str | None
+    result: str | None
+    main_pid: int | None
+    unit_not_found: bool
+
+
+@dataclass(frozen=True)
+class LaunchReconciliation:
+    outcome: Literal["spawn_failed", "keep_active", "terminal"]
+    job: JobRecord
+    detail: str
+    status_code: int | None
 
 
 class MaintenanceError(Exception):
@@ -324,6 +351,66 @@ def check_source(source: InstallSource, pypi_checker=default_update_checker, git
     return result
 
 
+def observe_transient_unit(
+    job_id: str,
+    *,
+    runner: CommandRunner = subprocess.run,
+) -> TransientUnitObservation | None:
+    try:
+        result = runner(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                f"service-directory-update-{job_id}",
+                "-p",
+                "LoadState",
+                "-p",
+                "ActiveState",
+                "-p",
+                "SubState",
+                "-p",
+                "Result",
+                "-p",
+                "MainPID",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    properties: dict[str, str] = {}
+    for line in (result.stdout or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        properties[key] = value
+
+    unit_not_found = properties.get("LoadState") == "not-found"
+    if result.returncode and not unit_not_found:
+        missing_text = f"{result.stdout}\n{result.stderr}".lower()
+        if "could not be found" in missing_text or "not-found" in missing_text:
+            unit_not_found = True
+        else:
+            return None
+
+    try:
+        main_pid = int(properties.get("MainPID", "0"))
+    except ValueError:
+        main_pid = 0
+
+    return TransientUnitObservation(
+        active_state=properties.get("ActiveState") or None,
+        sub_state=properties.get("SubState") or None,
+        result=properties.get("Result") or None,
+        main_pid=main_pid if main_pid > 0 else None,
+        unit_not_found=unit_not_found,
+    )
+
+
 def launch_worker(state_dir: str, job_id: str) -> None:
     """Run outside the directory, with recovery owned by the systemd manager.
 
@@ -376,18 +463,111 @@ class Maintenance:
             fcntl.flock(lock, fcntl.LOCK_EX)
             yield
 
-    def job(self, job_id: str) -> dict | None:
+    def _load_job_locked(self, job_id: str) -> JobRecord | None:
         if not re.fullmatch(r"[a-f0-9]{32}", job_id):
             return None
         return read_json(self.directory / f"{job_id}.json")
 
-    def latest_job(self) -> dict | None:
+    def _store_job_locked(self, job: JobRecord) -> None:
+        job_id = job.get("id")
+        if not isinstance(job_id, str) or not re.fullmatch(r"[a-f0-9]{32}", job_id):
+            raise ValueError("job record must include a valid id")
+        atomic_json(self.directory / f"{job_id}.json", job)
+
+    def _reconcile_stale_job_view(self, job: JobRecord, *, now: float) -> JobRecord:
+        started_at = job.get("started_at", 0)
+        if job.get("status") not in ACTIVE or not isinstance(started_at, (int, float)):
+            return job
+        if now - started_at <= 960:
+            return job
+        return {
+            **job,
+            "status": "failed",
+            "message": STALE_JOB_MESSAGE,
+            "finished_at": now,
+        }
+
+    def _reconcile_stale_job_locked(self, job: JobRecord, *, now: float) -> JobRecord:
+        reconciled = self._reconcile_stale_job_view(job, now=now)
+        if reconciled != job:
+            self._store_job_locked(reconciled)
+        return reconciled
+
+    def _latest_job_locked(self, *, now: float) -> JobRecord | None:
         pointer = read_json(self.directory / "latest-job.json")
-        job = self.job(pointer.get("id", "")) if pointer else None
-        if job and job.get("status") in ACTIVE and self.time_fn() - job.get("started_at", 0) > 960:
-            job.update(status="failed", message="Updater exceeded its deadline or was interrupted; inspect this node before retrying.", finished_at=self.time_fn())
-            atomic_json(self.directory / f"{job['id']}.json", job)
-        return job
+        job = self._load_job_locked(pointer.get("id", "")) if pointer else None
+        if job is None:
+            return None
+        return self._reconcile_stale_job_locked(job, now=now)
+
+    def _reconcile_launch_locked(
+        self,
+        job_id: str,
+        *,
+        launch_error: Exception,
+        observation: TransientUnitObservation | None,
+    ) -> LaunchReconciliation:
+        job = self._load_job_locked(job_id)
+        if job is None:
+            job = {
+                "id": job_id,
+                "status": "failed",
+                "message": LAUNCH_FAILED_MESSAGE,
+                "steps": [],
+                "started_at": self.time_fn(),
+                "finished_at": self.time_fn(),
+            }
+        else:
+            job = self._reconcile_stale_job_locked(job, now=self.time_fn())
+
+        if job.get("status") not in ACTIVE:
+            return LaunchReconciliation("terminal", job, str(job.get("message", "")), None)
+
+        if isinstance(launch_error, (FileNotFoundError, PermissionError)):
+            failed = {
+                **job,
+                "status": "failed",
+                "message": LAUNCH_FAILED_MESSAGE,
+                "finished_at": self.time_fn(),
+            }
+            self._store_job_locked(failed)
+            return LaunchReconciliation("spawn_failed", failed, LAUNCH_FAILED_MESSAGE, 503)
+
+        detail = (
+            "Transient updater launch could not be confirmed; keeping the durable job "
+            "active until it resolves or exceeds its deadline."
+        )
+        if observation is not None and observation.unit_not_found:
+            detail = (
+                "systemd no longer reports the transient updater unit; with --collect "
+                "that does not prove the worker never started, so the durable job "
+                "remains active until it resolves or exceeds its deadline."
+            )
+        return LaunchReconciliation("keep_active", job, detail, None)
+
+    def job(self, job_id: str) -> JobRecord | None:
+        if not re.fullmatch(r"[a-f0-9]{32}", job_id):
+            return None
+        if _load_fcntl() is None:
+            job = read_json(self.directory / f"{job_id}.json")
+            if job is None:
+                return None
+            return self._reconcile_stale_job_view(job, now=self.time_fn())
+        with self.locked():
+            job = self._load_job_locked(job_id)
+            if job is None:
+                return None
+            return self._reconcile_stale_job_locked(job, now=self.time_fn())
+
+    def latest_job(self) -> JobRecord | None:
+        if _load_fcntl() is None:
+            pointer = read_json(self.directory / "latest-job.json")
+            job = read_json(self.directory / f"{pointer.get('id', '')}.json") if pointer else None
+            if job is None:
+                return None
+            return self._reconcile_stale_job_view(job, now=self.time_fn())
+        with self.locked():
+            return self._latest_job_locked(now=self.time_fn())
 
     def status(self) -> dict:
         source = self.source_detector()
@@ -415,27 +595,46 @@ class Maintenance:
         })
         return self.status()
 
-    def start(self) -> dict:
+    def start(self) -> JobRecord:
         source = self.source_detector()
         reason = self.capability(source)
         if reason:
             raise MaintenanceError(422, reason)
         with self.locked():
-            latest = self.latest_job()
+            now = self.time_fn()
+            latest = self._latest_job_locked(now=now)
             if latest and latest.get("status") in ACTIVE:
                 raise MaintenanceError(409, "An update job is already active.")
             job_id = uuid.uuid4().hex
-            job = {"id": job_id, "status": "queued", "message": "Independent updater queued.",
-                   "steps": [], "started_at": self.time_fn(), "finished_at": None}
-            atomic_json(self.directory / f"{job_id}.json", job)
+            job: JobRecord = {
+                "id": job_id,
+                "status": "queued",
+                "message": "Independent updater queued.",
+                "steps": [],
+                "started_at": now,
+                "finished_at": None,
+            }
+            self._store_job_locked(job)
             atomic_json(self.directory / "latest-job.json", {"id": job_id})
-            try:
-                self.launcher(str(self.directory.parent), job_id)
-            except Exception:
-                job.update(status="failed", message="Could not start the independent updater; no service changes were made.", finished_at=self.time_fn())
-                atomic_json(self.directory / f"{job_id}.json", job)
-                raise MaintenanceError(503, job["message"])
+        try:
+            self.launcher(str(self.directory.parent), job_id)
             return job
+        except (FileNotFoundError, PermissionError) as error:
+            observation = None
+            launch_error = error
+        except Exception as error:
+            observation = observe_transient_unit(job_id)
+            launch_error = error
+
+        with self.locked():
+            reconciliation = self._reconcile_launch_locked(
+                job_id,
+                launch_error=launch_error,
+                observation=observation,
+            )
+        if reconciliation.outcome == "spawn_failed":
+            raise MaintenanceError(reconciliation.status_code or 503, reconciliation.detail)
+        return reconciliation.job
 
 
 def verify_restarted_service() -> bool:
@@ -457,23 +656,38 @@ def verify_restarted_service() -> bool:
 
 def run_worker(state_dir: str, job_id: str, upgrader=run_upgrade, verifier=verify_restarted_service) -> None:
     maintenance = Maintenance(state_dir)
-    job = maintenance.job(job_id)
-    if not job or job.get("status") != "queued":
-        return
-    path = maintenance.directory / f"{job_id}.json"
-    job.update(status="running", message="Updating; the directory may disconnect while its service restarts.")
-    atomic_json(path, job)
+    with maintenance.locked():
+        job = maintenance._load_job_locked(job_id)
+        if not job or job.get("status") != "queued":
+            return
+        job = {**job, "status": "running", "message": RUNNING_MESSAGE}
+        maintenance._store_job_locked(job)
+    steps: list[str] | None = None
+    status = "failed"
+    message = WORKER_FAILED_MESSAGE
     try:
         result = upgrader(recover_on_failure=True, doctor_verifier=verifier)
         # Do not return installer stdout/stderr: source URLs can contain secrets.
         succeeded = result.ok and not result.skipped
-        job.update(status="succeeded" if succeeded else "failed", steps=result.steps,
-                   message="Update completed and the restarted directory responded." if succeeded else
-                   "Update did not complete. Check service-directory logs/doctor on this node.")
+        status = "succeeded" if succeeded else "failed"
+        steps = result.steps
+        message = SUCCESS_MESSAGE if succeeded else FAILED_MESSAGE
     except Exception:
-        job.update(status="failed", message="Updater failed. Check the directory service on this node.")
-    job["finished_at"] = time.time()
-    atomic_json(path, job)
+        pass
+    finished_at = time.time()
+    with maintenance.locked():
+        current = maintenance._load_job_locked(job_id)
+        if not current or current.get("status") not in ACTIVE:
+            return
+        finished = {
+            **current,
+            "status": status,
+            "message": message,
+            "finished_at": finished_at,
+        }
+        if steps is not None:
+            finished["steps"] = steps
+        maintenance._store_job_locked(finished)
 
 
 def main() -> None:
