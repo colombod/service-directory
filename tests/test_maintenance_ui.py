@@ -871,6 +871,113 @@ def test_maintenance_ui_post_failure_does_not_replay_or_claim_latest_job(tmp_pat
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
+@pytest.mark.parametrize(
+    ("ambiguous_post_spec", "scenario_id"),
+    [
+        (
+            {
+                "status": 202,
+                "json": {
+                    "status": "queued",
+                    "message": "Independent updater queued.",
+                    "steps": [],
+                    "started_at": 1_700_001_000,
+                    "finished_at": None,
+                },
+            },
+            "accepted_without_exact_id",
+        ),
+        (
+            {"type": "reject", "message": "socket hang up", "name": "TypeError"},
+            "network_response_unknown",
+        ),
+    ],
+    ids=lambda value: value if isinstance(value, str) else None,
+)
+def test_maintenance_ui_ambiguous_update_invalidates_prior_exact_ownership(
+    tmp_path, ambiguous_post_spec, scenario_id
+):
+    prior_job_id = "a" * 32
+    data = _run_jsdom_scenario(
+        tmp_path,
+        {
+            "routes": _base_routes(
+                _status_payload(update_available=True, job=None),
+                _status_payload(
+                    update_available=True,
+                    job=_job_payload(
+                        prior_job_id,
+                        status="succeeded",
+                        message="Update completed and the restarted directory responded.",
+                        steps=["stop", "reinstall", "restart"],
+                        finished_at=1_700_000_900,
+                    ),
+                ),
+                extra={
+                    "POST /api/maintenance/update": [
+                        {
+                            "status": 202,
+                            "json": _job_payload(
+                                prior_job_id,
+                                status="queued",
+                                message="Independent updater queued.",
+                            ),
+                        },
+                        ambiguous_post_spec,
+                    ],
+                    f"GET /api/maintenance/jobs/{prior_job_id}": [
+                        {
+                            "json": _job_payload(
+                                prior_job_id,
+                                status="succeeded",
+                                message="Update completed and the restarted directory responded.",
+                                steps=["stop", "reinstall", "restart"],
+                                finished_at=1_700_000_900,
+                            )
+                        }
+                    ],
+                },
+            ),
+            "actions": [
+                {"type": "click", "id": "settings-btn"},
+                {"type": "flush"},
+                {"type": "click", "id": "settings-update-btn"},
+                {"type": "flush"},
+                {"type": "advance", "ms": 3000},
+                {"type": "flush"},
+                {"type": "capture", "name": "known_exact"},
+                {"type": "click", "id": "settings-update-btn"},
+                {"type": "flush"},
+                {"type": "capture", "name": "after_ambiguous"},
+                {"type": "click", "id": "settings-maintenance-refresh-btn"},
+                {"type": "flush"},
+                {"type": "capture", "name": "after_refresh"},
+            ],
+        },
+    )
+
+    known_exact = data["snapshots"]["known_exact"]
+    after_ambiguous = data["snapshots"]["after_ambiguous"]
+    after_refresh = data["snapshots"]["after_refresh"]
+
+    assert known_exact["tracked_job_id"] == prior_job_id, scenario_id
+    assert known_exact["ownership_state"] == "exact", scenario_id
+    assert known_exact["counts_by_key"][f"GET /api/maintenance/jobs/{prior_job_id}"] == 1, scenario_id
+
+    assert after_ambiguous["counts_by_key"]["POST /api/maintenance/update"] == 2, scenario_id
+    assert after_ambiguous["tracked_job_id"] is None, scenario_id
+    assert after_ambiguous["ownership_state"] == "unconfirmed", scenario_id
+    assert after_ambiguous["job_id_text"] == prior_job_id, scenario_id
+
+    assert after_refresh["counts_by_key"]["POST /api/maintenance/update"] == 2, scenario_id
+    assert after_refresh["counts_by_key"]["GET /api/maintenance"] == 2, scenario_id
+    assert after_refresh["counts_by_key"].get(f"GET /api/maintenance/jobs/{prior_job_id}", 0) == 1, scenario_id
+    assert after_refresh["tracked_job_id"] is None, scenario_id
+    assert after_refresh["ownership_state"] == "unconfirmed", scenario_id
+    assert after_refresh["job_id_text"] == prior_job_id, scenario_id
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 def test_maintenance_ui_transient_disconnect_never_reposts_update(tmp_path):
     job_id = "7" * 32
     data = _run_jsdom_scenario(
