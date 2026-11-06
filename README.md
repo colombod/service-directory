@@ -200,15 +200,33 @@ curl -s http://127.0.0.1:8085/api/maintenance
 ```
 
 Read endpoints follow the existing read-token rules; remote checks/updates
-require the node's **write token**. Updates accept no caller-provided command,
-URL, or ref. `update_available: null` means unknown, not current. Git installations
-follow their original branch/HEAD instead of reinstalling the same installed
-commit; deliberately pinned commits stay pinned.
+require the node's **write token**. Separately, update support is evaluated
+from the currently serving process, so localhost or reverse-proxy access does
+not bypass the managed-systemd-service identity requirement. Updates accept no
+caller-provided command, URL, or ref. `update_available: null` means unknown,
+not current. Git installations follow their original branch/HEAD instead of
+reinstalling the same installed commit; deliberately pinned full commits stay
+pinned and report current at that immutable revision instead of advertising a
+moving latest target.
+
+The Settings panel renders structured maintenance status (version/revision,
+install kind, support reason, last checked, update state/target, and durable
+job details). **Install update & restart** stays disabled until a supported
+check reports `update_available: true`. After an accepted update, the page
+tracks the exact returned job id, polls that exact `GET
+/api/maintenance/jobs/{id}` every 3 seconds with a 5-second read timeout, and
+stops after 340 reads or 1020 seconds by marking the UI `unconfirmed` until
+you refresh the panel manually. It never automatically replays the update
+POST.
 
 Remote self-update requires a **Linux systemd user service installed as a uv
 tool**, plus `uv`, `systemctl`, and systemd 254+ (`systemd-run`) on its PATH. A separate transient unit runs
 the updater so stopping the directory cannot kill the update. Jobs persist
-through restart; success requires a restarted service and fresh HTTP response.
+through restart; follow the exact returned job after reconnect. API job status
+remains `queued`, `running`, `succeeded`, or `failed` (the UI-only
+`unconfirmed` state is never persisted). Jobs still active after 960 seconds
+are read back as failed; success requires a restarted service and fresh HTTP
+response.
 The systemd manager also attempts to restart the directory after the updater
 exits or is killed, independently of its Python environment. This recovery
 attempt does not provide package rollback; a damaged install may need repair.

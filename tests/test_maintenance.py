@@ -25,7 +25,7 @@ from service_directory.config import FederationConfig, HostAddress, RegistryConf
 from service_directory.install_source import InstallSource, check_for_update, detect_install_source
 from service_directory.maintenance import (
     Maintenance, MaintenanceError, atomic_json, check_source, default_capability, git_revision,
-    launch_worker, run_worker, serving_process_identity_reason,
+    launch_worker, observe_transient_unit, run_worker, serving_process_identity_reason,
 )
 from service_directory.service_manager import ServiceResult
 from service_directory.trust_store import PeerRecord, upsert_peer
@@ -105,6 +105,63 @@ def make_runner(show_output: str, *, version_output: str = 'systemd 255 (255)'):
             return subprocess.CompletedProcess(command, 0, show_output, '')
         raise AssertionError(f'unexpected command: {command!r}')
     return runner
+
+
+def test_observe_transient_unit_parses_live_collected_status():
+    observation = observe_transient_unit(
+        'a' * 32,
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            'LoadState=loaded\nActiveState=active\nSubState=running\nResult=success\nMainPID=4242\nignored-line\n',
+            '',
+        ),
+    )
+
+    assert observation is not None
+    assert observation.active_state == 'active'
+    assert observation.sub_state == 'running'
+    assert observation.result == 'success'
+    assert observation.main_pid == 4242
+    assert observation.unit_not_found is False
+
+
+def test_observe_transient_unit_tolerates_malformed_fields():
+    observation = observe_transient_unit(
+        'b' * 32,
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            'LoadState=loaded\nActiveState=\nSubState=dead\nResult=\nMainPID=not-a-pid\nmalformed\n',
+            '',
+        ),
+    )
+
+    assert observation is not None
+    assert observation.active_state is None
+    assert observation.sub_state == 'dead'
+    assert observation.result is None
+    assert observation.main_pid is None
+    assert observation.unit_not_found is False
+
+
+def test_observe_transient_unit_marks_missing_transient_unit_without_claiming_no_execution():
+    observation = observe_transient_unit(
+        'c' * 32,
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(
+            command,
+            1,
+            '',
+            'Unit service-directory-update-cccccccccccccccccccccccccccccccc could not be found.\n',
+        ),
+    )
+
+    assert observation is not None
+    assert observation.active_state is None
+    assert observation.sub_state is None
+    assert observation.result is None
+    assert observation.main_pid is None
+    assert observation.unit_not_found is True
 
 
 def build_identity_fixture(tmp_path, *, current_pid: int = 7674, main_pid: int | None = None,

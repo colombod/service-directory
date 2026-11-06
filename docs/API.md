@@ -423,7 +423,15 @@ curl -s "http://127.0.0.1:8085/api/view-proxy?url=http://100.111.191.22:8000/sta
 Maintenance lives in **Settings → Maintenance**. These endpoints operate on
 **this directory node only**, never the applications listed in its catalogue.
 A client must contact each node directly with that node's credentials. A
-federation peer token does not grant write access to remote maintenance.
+federation peer token does not grant write access to remote maintenance. The
+HTTP surface stays the same (`GET /api/maintenance`, `GET
+/api/maintenance/jobs/{id}`, `POST /api/maintenance/check`, `POST
+/api/maintenance/update`), but update support is evaluated from the currently
+serving process on every request. Passing write auth does not bypass that
+support gate: localhost, reverse-proxied, and remote callers all see the same
+`update_supported` / `unsupported_reason` decision, and `POST
+/api/maintenance/update` still returns `422` when the directory is not being
+served by its managed systemd user-service process.
 
 ### `GET /api/maintenance` — read access
 
@@ -443,14 +451,23 @@ installs. Explicit full commit pins remain pinned. `latest_version` is populated
 for index installs; Git installs instead report `latest_revision`, even when the
 package's version string has not changed. Checks are invalidated when the
 installed version/revision changes. The response never exposes repository URLs
-(which may contain credentials) or installer output.
+(which may contain credentials) or installer output. `update_supported` /
+`unsupported_reason` are computed on every read from the current deployment; on
+Linux they include managed-service identity checks of the current unit file,
+`MainPID`, control group, and `ExecStart`, so opening the API from localhost
+does not make a foreground/manual server eligible for remote self-update.
 
 ### `POST /api/maintenance/check` — write access
 
 Performs a bounded update check against the **installed source**, persists the
 result, and returns the same status shape. Git uses noninteractive `git
 ls-remote` with a five-second timeout; index checks use the existing two-second
-PyPI lookup. No arbitrary source URL is accepted.
+PyPI lookup. No arbitrary source URL is accepted. This endpoint remains
+available even when `update_supported` is `false`, because it inspects the
+installed source only and does not launch the updater. If a Git install is
+deliberately pinned to a full 40-hex commit, the check reports that immutable
+revision as current (`update_available: false`) instead of advertising a moving
+branch tip as “latest”.
 
 ### `POST /api/maintenance/update` — write access
 
@@ -475,7 +492,11 @@ environment, after terminating any remaining installer processes. Stop and
 recovery commands are bounded to 20 seconds each, within the job's one-minute
 deadline grace. This is an independent restart attempt, not a transactional
 package rollback; a broken installation can still require manual repair.
-Inspect `service-directory doctor` and the transient unit logs if it fails.
+Inspect `service-directory doctor` and the transient unit logs if it fails. The
+accepted job record starts as `status: "queued"` with `steps: []`; `steps` is a
+recorded terminal summary written by the worker (for example `stop`,
+`reinstall`, `verify`, `recover_service`) once the backend has a durable
+result, not a live progress stream synthesized by the UI.
 
 Remote self-update is supported for **uv tool installs on Linux managed by the
 installed systemd user service**, with `uv`, `systemctl`, and systemd 254+
@@ -496,12 +517,17 @@ Failure responses use `{"detail":"..."}`:
 ### `GET /api/maintenance/jobs/{id}` — read access
 
 Returns the same durable job shape; `404 {"detail":"unknown update job"}` for
-an unknown/invalid ID. `GET /api/maintenance` includes the latest job, including
-its terminal result after restart. Status is `queued`, `running`, `succeeded`, or
-`failed`. Jobs interrupted beyond the 15-minute worker deadline plus one-minute
-grace are reported as failed by maintenance status; success is never inferred
-from a timeout. State files are private (`0600`, directory `0700`), written
-atomically under the directory's state directory, and retained across restarts.
+an unknown/invalid ID. Use the exact `id` accepted from `POST
+/api/maintenance/update` when following one request through a restart.
+`GET /api/maintenance` includes the latest job, including its terminal result
+after restart. API job status is `queued`, `running`, `succeeded`, or `failed`;
+the Settings UI may temporarily render local `unconfirmed` reconnect state, but
+that string is never persisted by this endpoint. Active jobs are reconciled
+stale after 960 seconds (15-minute worker deadline plus 60-second grace) on
+both latest-job and exact-job reads; success is never inferred from a timeout
+or a lost connection. State files are private (`0600`, directory `0700`),
+written atomically under the directory's state directory, and retained across
+restarts.
 
 ```bash
 # Read status (add a peer read-token bearer if read access is enabled):

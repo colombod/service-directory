@@ -179,6 +179,38 @@ panel. Reads live from the API on open (`loadSettings()`):
   - **"Pair with peer"** form (peer base URL + code) → `POST
     /api/federation/pair-with-peer` (write-token gated) → on success shows
     "Paired with `<name>` (`<base_url>`)" and reloads the peers list.
+- **Directory Maintenance** (`#settings-panel-maintenance`,
+  `#settings-maintenance-content`): reads `GET /api/maintenance` when
+  Settings opens and renders structured fields for running version, current
+  revision, install kind, support/unsupported reason, last checked time,
+  update state/target, and the latest or exact tracked maintenance job
+  (`id`, `status`, `started`, `finished`, message, recorded steps). Three
+  actions live here:
+  - **"Check for updates"** → `POST /api/maintenance/check` → refreshes the
+    status cards against the installed source. This uses the same write-token
+    auth path as other Settings mutations, but a successful write-auth check
+    still does **not** override maintenance support detection: even on
+    localhost, a foreground/manual server can report `unsupported_reason`
+    because it is not the managed systemd service process.
+  - **"Install update & restart"** → `POST /api/maintenance/update` →
+    disabled unless `update_supported !== false`, `update_available === true`,
+    and neither the latest job nor the exact tracked job is active. In other
+    words, both `unknown` (`update_available: null`) and `current`
+    (`update_available: false`) keep the button disabled.
+  - **"Refresh status"** → `GET /api/maintenance` → manual reconnect path
+    after a restart or ambiguous network loss.
+
+  After an accepted update, the page tracks the **exact returned job id** and
+  polls only `GET /api/maintenance/jobs/{id}` while the Settings overlay stays
+  open. Polling is every 3 seconds, each read is bounded to 5 seconds, and the
+  page stops after the first budget it exhausts: 340 reads or 1020 elapsed
+  seconds. If reconnect reads fail or the polling budget is exhausted, the UI
+  shows a local `unconfirmed` status/note instead of claiming `failed`, and the
+  user must use **Refresh status** to reconnect. The page never automatically
+  replays `POST /api/maintenance/update`, and it never silently claims some
+  other "latest" job as the one this browser launched. The recorded steps list
+  shows only the backend's durable `job.steps`; queued/running jobs can
+  legitimately show no steps yet.
 
 Settings is read-only until a write token is supplied for anything that
 mutates state — this matches AGENTS.md's rule that Settings is the home for
