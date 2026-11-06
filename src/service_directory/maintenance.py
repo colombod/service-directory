@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from packaging.version import InvalidVersion, Version
 
@@ -48,6 +48,7 @@ WORKER_FAILED_MESSAGE = "Updater failed. Check the directory service on this nod
 STALE_JOB_MESSAGE = (
     "Updater exceeded its deadline or was interrupted; inspect this node before retrying."
 )
+SCOPE_ID_SAFE = "-._~"
 
 
 @dataclass(frozen=True)
@@ -655,20 +656,34 @@ def instance_info_probe_url(host: str | None, port: str | int | None) -> str:
         if not (candidate.startswith("[") and candidate.endswith("]")):
             raise ValueError("invalid host")
         candidate = candidate[1:-1]
+    scope_id: str | None = None
     if "%" in candidate:
-        raise ValueError("invalid host")
+        literal, delimiter, zone = candidate.partition("%")
+        if not delimiter or not literal or not zone or "%" in zone:
+            raise ValueError("invalid host")
+        if quote(zone, safe=SCOPE_ID_SAFE) != zone:
+            raise ValueError("invalid host")
+        candidate = literal
+        scope_id = zone
 
     try:
         address = ipaddress.ip_address(candidate)
     except ValueError:
-        if ":" in candidate or not re.fullmatch(r"[A-Za-z0-9.-]+", candidate):
+        if scope_id is not None or ":" in candidate or not re.fullmatch(r"[A-Za-z0-9.-]+", candidate):
             raise ValueError("invalid host")
         safe_host = candidate
     else:
         if isinstance(address, ipaddress.IPv4Address):
+            if scope_id is not None:
+                raise ValueError("invalid host")
             safe_host = "127.0.0.1" if address.is_unspecified else str(address)
         else:
-            safe_host = f"[{'::1' if address.is_unspecified else address.compressed}]"
+            if address.is_unspecified:
+                safe_host = "[::1]"
+            elif scope_id is not None:
+                safe_host = f"[{address.compressed}%25{quote(scope_id, safe=SCOPE_ID_SAFE)}]"
+            else:
+                safe_host = f"[{address.compressed}]"
 
     if port is None:
         safe_port = 80
