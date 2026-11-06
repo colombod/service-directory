@@ -41,6 +41,7 @@ LOCKING_UNSUPPORTED_REASON = (
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 JobRecord = dict[str, object]
 LAUNCH_FAILED_MESSAGE = "Could not start the independent updater; no service changes were made."
+OBSERVED_FAILED_MESSAGE = "independent updater exited unsuccessfully; check service status"
 RUNNING_MESSAGE = "Updating; the directory may disconnect while its service restarts."
 SUCCESS_MESSAGE = "Update completed and the restarted directory responded."
 FAILED_MESSAGE = "Update did not complete. Check service-directory logs/doctor on this node."
@@ -534,6 +535,21 @@ class Maintenance:
             }
             self._store_job_locked(failed)
             return LaunchReconciliation("spawn_failed", failed, LAUNCH_FAILED_MESSAGE, 503)
+
+        if (
+            observation is not None
+            and observation.unit_not_found is False
+            and observation.active_state == "failed"
+            and observation.main_pid is None
+        ):
+            failed = {
+                **job,
+                "status": "failed",
+                "message": OBSERVED_FAILED_MESSAGE,
+                "finished_at": self.time_fn(),
+            }
+            self._store_job_locked(failed)
+            return LaunchReconciliation("terminal", failed, OBSERVED_FAILED_MESSAGE, None)
 
         detail = (
             "Transient updater launch could not be confirmed; keeping the durable job "
