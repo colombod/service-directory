@@ -8,6 +8,7 @@ No HTTP request can supply an install URL, ref, executable, or command.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import platform
@@ -637,14 +638,71 @@ class Maintenance:
         return reconciliation.job
 
 
+def instance_info_probe_url(host: str | None, port: str | int | None) -> str:
+    """Build a safe probe URL for the running node's instance-info endpoint."""
+    if host is None:
+        candidate = "0.0.0.0"
+    elif not isinstance(host, str):
+        raise ValueError("invalid host")
+    else:
+        candidate = host.strip()
+    if not candidate:
+        raise ValueError("invalid host")
+    if "://" in candidate or any(ch in candidate for ch in "/\\?#@"):
+        raise ValueError("invalid host")
+    bracketed = candidate.startswith("[") or candidate.endswith("]")
+    if bracketed:
+        if not (candidate.startswith("[") and candidate.endswith("]")):
+            raise ValueError("invalid host")
+        candidate = candidate[1:-1]
+    if "%" in candidate:
+        raise ValueError("invalid host")
+
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        if ":" in candidate or not re.fullmatch(r"[A-Za-z0-9.-]+", candidate):
+            raise ValueError("invalid host")
+        safe_host = candidate
+    else:
+        if isinstance(address, ipaddress.IPv4Address):
+            safe_host = "127.0.0.1" if address.is_unspecified else str(address)
+        else:
+            safe_host = f"[{'::1' if address.is_unspecified else address.compressed}]"
+
+    if port is None:
+        safe_port = 80
+    elif isinstance(port, bool):
+        raise ValueError("invalid port")
+    elif isinstance(port, int):
+        safe_port = port
+    elif isinstance(port, str):
+        text = port.strip()
+        if not text.isdigit():
+            raise ValueError("invalid port")
+        safe_port = int(text)
+    else:
+        raise ValueError("invalid port")
+    if not 1 <= safe_port <= 65535:
+        raise ValueError("invalid port")
+
+    return f"http://{safe_host}:{safe_port}/api/instance-info"
+
+
 def verify_restarted_service() -> bool:
     """Require a running unit AND a fresh HTTP response, not a launch result."""
     manager = SystemdUserServiceManager()
-    port = int(os.environ.get("SERVICE_REGISTRY_PORT", "80"))
+    try:
+        probe_url = instance_info_probe_url(
+            os.environ.get("SERVICE_REGISTRY_HOST", "0.0.0.0"),
+            os.environ.get("SERVICE_REGISTRY_PORT", "80"),
+        )
+    except ValueError:
+        return False
     for _ in range(15):
         try:
             if manager.status().ok:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/instance-info", timeout=1) as response:
+                with urllib.request.urlopen(probe_url, timeout=1) as response:
                     info = json.loads(response.read())
                 if isinstance(info.get("version"), str):
                     return True

@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+import service_directory.maintenance as maintenance_module
 from service_directory.app import create_app
 from service_directory.config import FederationConfig, HostAddress, RegistryConfig
 from service_directory.install_source import InstallSource, check_for_update, detect_install_source
@@ -158,6 +159,89 @@ def write_job(state: Maintenance, job_id: str, *, status: str = 'queued', messag
             'finished_at': finished_at,
         },
     )
+
+
+def test_instance_info_probe_url_uses_loopback_for_ipv4_wildcard():
+    assert maintenance_module.instance_info_probe_url('0.0.0.0', 8085) == 'http://127.0.0.1:8085/api/instance-info'
+
+
+def test_instance_info_probe_url_uses_ipv6_loopback_for_ipv6_wildcard():
+    assert maintenance_module.instance_info_probe_url('::', 8085) == 'http://[::1]:8085/api/instance-info'
+
+
+def test_instance_info_probe_url_brackets_ipv6_literals():
+    assert maintenance_module.instance_info_probe_url('2001:db8::1', 8085) == 'http://[2001:db8::1]:8085/api/instance-info'
+
+
+def test_verify_restarted_service_uses_configured_host_not_hardcoded_loopback(monkeypatch):
+    requests = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def read(self):
+            return json.dumps(self.payload).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def urlopen(url, timeout):
+        requests.append((url, timeout))
+        if url == 'http://192.0.2.44:8085/api/instance-info':
+            return Response({'version': '0.1.0'})
+        raise AssertionError(f'unexpected probe url: {url}')
+
+    monkeypatch.setenv('SERVICE_REGISTRY_HOST', '192.0.2.44')
+    monkeypatch.setenv('SERVICE_REGISTRY_PORT', '8085')
+    monkeypatch.setattr(
+        'service_directory.maintenance.SystemdUserServiceManager',
+        lambda: SimpleNamespace(status=lambda: SimpleNamespace(ok=True)),
+    )
+    monkeypatch.setattr('service_directory.maintenance.urllib.request.urlopen', urlopen)
+    monkeypatch.setattr('service_directory.maintenance.time.sleep', lambda *_: None)
+
+    assert maintenance_module.verify_restarted_service() is True
+    assert requests == [('http://192.0.2.44:8085/api/instance-info', 1)]
+
+    requests.clear()
+    monkeypatch.setattr(
+        'service_directory.maintenance.SystemdUserServiceManager',
+        lambda: SimpleNamespace(status=lambda: SimpleNamespace(ok=False)),
+    )
+    assert maintenance_module.verify_restarted_service() is False
+    assert requests == []
+
+    requests.clear()
+    monkeypatch.setattr(
+        'service_directory.maintenance.SystemdUserServiceManager',
+        lambda: SimpleNamespace(status=lambda: SimpleNamespace(ok=True)),
+    )
+    monkeypatch.setattr(
+        'service_directory.maintenance.urllib.request.urlopen',
+        lambda url, timeout: Response({}),
+    )
+    assert maintenance_module.verify_restarted_service() is False
+    assert requests == []
+
+
+def test_probe_url_rejects_invalid_host_or_port_injection():
+    for host in (
+        'http://127.0.0.1',
+        'user@127.0.0.1',
+        '127.0.0.1:8085',
+        'host/path',
+        'fe80::1%eth0',
+    ):
+        with pytest.raises(ValueError):
+            maintenance_module.instance_info_probe_url(host, 8085)
+
+    for port in (0, 65536, '8085/path', '8085#frag'):
+        with pytest.raises(ValueError):
+            maintenance_module.instance_info_probe_url('127.0.0.1', port)
 
 
 def test_pep610_preserves_requested_branch_and_unqualified_head():
