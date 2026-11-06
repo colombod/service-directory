@@ -850,6 +850,40 @@ def test_api_auth_and_read_gate(tmp_path):
     assert client.post('/api/maintenance/update', headers=headers).status_code == 409
 
 
+def test_api_exact_job_route_expires_stale_active_job_and_persists_terminal_failure(tmp_path):
+    stale_message = 'Updater exceeded its deadline or was interrupted; inspect this node before retrying.'
+    fixed_now = 2000
+    state = maintenance(
+        tmp_path,
+        source_detector=lambda: pytest.fail('exact job reads must not inspect install source'),
+        capability=lambda source: pytest.fail('exact job reads must not check capability'),
+        checker=lambda source: pytest.fail('exact job reads must not check for updates'),
+        launcher=lambda state_dir, job_id: pytest.fail('exact job reads must not launch updates'),
+        time_fn=lambda: fixed_now,
+    )
+    job_id = '1' * 32
+    write_job(state, job_id, status='running', started_at=1)
+    client = TestClient(create_app(config(tmp_path), maintenance=state), client=('127.0.0.1', 1234))
+
+    response = client.get(f'/api/maintenance/jobs/{job_id}')
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['id'] == job_id
+    assert body['status'] == 'failed'
+    assert body['message'] == stale_message
+    assert body['finished_at'] == fixed_now
+
+    persisted = json.loads((state.directory / f'{job_id}.json').read_text())
+    assert persisted['status'] == 'failed'
+    assert persisted['message'] == stale_message
+    assert persisted['finished_at'] == fixed_now
+
+    second = client.get(f'/api/maintenance/jobs/{job_id}')
+    assert second.status_code == 200
+    assert second.json() == body
+
+
 def test_api_rejects_command_input_and_reports_unsupported(tmp_path):
     state = maintenance(tmp_path, capability=lambda source: 'unsupported')
     app = create_app(config(tmp_path), maintenance=state)
