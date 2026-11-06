@@ -139,6 +139,27 @@ def build_identity_fixture(tmp_path, *, current_pid: int = 7674, main_pid: int |
     return make_runner(show_output), proc_root, manager_factory, unit_path, current_entrypoint
 
 
+def write_job(state: Maintenance, job_id: str, *, status: str = 'queued', message: str | None = None,
+              steps: list[str] | None = None, started_at: float = 1000, finished_at: float | None = None):
+    default_message = {
+        'queued': 'Independent updater queued.',
+        'running': 'Updating; the directory may disconnect while its service restarts.',
+        'succeeded': 'Update completed and the restarted directory responded.',
+        'failed': 'Update did not complete. Check service-directory logs/doctor on this node.',
+    }
+    atomic_json(
+        state.directory / f'{job_id}.json',
+        {
+            'id': job_id,
+            'status': status,
+            'message': message or default_message[status],
+            'steps': steps or [],
+            'started_at': started_at,
+            'finished_at': finished_at,
+        },
+    )
+
+
 def test_pep610_preserves_requested_branch_and_unqualified_head():
     class Distribution:
         version = '0.1.0'
@@ -242,7 +263,7 @@ def test_unsupported_and_launcher_failure_do_not_claim_success(tmp_path):
         blocked.start()
     assert error.value.status_code == 422
     def broken(*args):
-        raise OSError('token-in-source-url')
+        raise FileNotFoundError('token-in-source-url')
     state = maintenance(tmp_path, launcher=broken)
     with pytest.raises(MaintenanceError) as error:
         state.start()
@@ -258,6 +279,217 @@ def test_interrupted_jobs_expire_honestly_and_can_retry(tmp_path):
     later = maintenance(tmp_path, time_fn=lambda: 2000)
     assert later.status()['job']['status'] == 'failed'
     assert later.start()['id'] != job['id']
+
+
+def test_launcher_file_not_found_marks_failed_503(tmp_path):
+    def missing(*args):
+        raise FileNotFoundError('systemd-run')
+
+    state = maintenance(tmp_path, launcher=missing)
+
+    with pytest.raises(MaintenanceError) as error:
+        state.start()
+
+    assert error.value.status_code == 503
+    job = state.status()['job']
+    assert job['status'] == 'failed'
+    assert job['finished_at'] is not None
+
+
+def test_launcher_permission_error_marks_failed_503(tmp_path):
+    def denied(*args):
+        raise PermissionError('systemd-run')
+
+    state = maintenance(tmp_path, launcher=denied)
+
+    with pytest.raises(MaintenanceError) as error:
+        state.start()
+
+    assert error.value.status_code == 503
+    job = state.status()['job']
+    assert job['status'] == 'failed'
+    assert job['finished_at'] is not None
+
+
+def test_worker_finished_before_launcher_timeout_is_not_clobbered(tmp_path):
+    def launcher(state_dir, job_id):
+        worker = threading.Thread(
+            target=run_worker,
+            args=(state_dir, job_id),
+            kwargs={
+                'upgrader': lambda **kwargs: UpgradeResult(True, False, '', ['stop', 'reinstall', 'verify']),
+                'verifier': lambda: True,
+            },
+        )
+        worker.start()
+        worker.join()
+        raise subprocess.TimeoutExpired('systemd-run', 10)
+
+    state = maintenance(tmp_path, launcher=launcher)
+    job = state.start()
+    assert job['status'] == 'succeeded'
+    assert state.job(job['id'])['status'] == 'succeeded'
+
+
+def test_worker_running_update_is_not_clobbered_by_late_launcher_error(tmp_path):
+    upgrader_started = threading.Event()
+    release_upgrader = threading.Event()
+    workers = []
+
+    def upgrader(**kwargs):
+        upgrader_started.set()
+        assert release_upgrader.wait(5)
+        return UpgradeResult(True, False, '', ['stop', 'reinstall', 'verify'])
+
+    def launcher(state_dir, job_id):
+        worker = threading.Thread(
+            target=run_worker,
+            args=(state_dir, job_id),
+            kwargs={'upgrader': upgrader, 'verifier': lambda: True},
+        )
+        workers.append(worker)
+        worker.start()
+        assert upgrader_started.wait(5)
+        raise subprocess.TimeoutExpired('systemd-run', 10)
+
+    state = maintenance(tmp_path, launcher=launcher)
+    job = state.start()
+    assert state.job(job['id'])['status'] == 'running'
+    release_upgrader.set()
+    workers[0].join()
+    assert state.job(job['id'])['status'] == 'succeeded'
+
+
+def test_timeout_delayed_ipc_keeps_original_active_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        'service_directory.maintenance.observe_transient_unit',
+        lambda job_id, *, runner=subprocess.run: SimpleNamespace(
+            active_state='active',
+            sub_state='running',
+            result='success',
+            main_pid=4242,
+            unit_not_found=False,
+        ),
+        raising=False,
+    )
+
+    def timed_out(*args):
+        raise subprocess.TimeoutExpired('systemd-run', 10)
+
+    state = maintenance(tmp_path, launcher=timed_out)
+    job = state.start()
+    assert job['status'] == 'queued'
+    assert state.job(job['id'])['status'] == 'queued'
+
+
+def test_unit_collected_after_timeout_does_not_prove_no_execution(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        'service_directory.maintenance.observe_transient_unit',
+        lambda job_id, *, runner=subprocess.run: SimpleNamespace(
+            active_state=None,
+            sub_state=None,
+            result=None,
+            main_pid=None,
+            unit_not_found=True,
+        ),
+        raising=False,
+    )
+
+    def timed_out(*args):
+        raise subprocess.TimeoutExpired('systemd-run', 10)
+
+    state = maintenance(tmp_path, launcher=timed_out)
+    job = state.start()
+    assert job['status'] == 'queued'
+    assert state.job(job['id'])['status'] == 'queued'
+
+
+def test_ambiguous_launch_timeout_preserves_active_job_and_blocks_duplicate_start(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        'service_directory.maintenance.observe_transient_unit',
+        lambda job_id, *, runner=subprocess.run: None,
+        raising=False,
+    )
+
+    def timed_out(*args):
+        raise subprocess.TimeoutExpired('systemd-run', 10)
+
+    state = maintenance(tmp_path, launcher=timed_out)
+    first = state.start()
+    with pytest.raises(MaintenanceError) as error:
+        state.start()
+    assert error.value.status_code == 409
+    assert state.job(first['id'])['status'] == 'queued'
+
+
+def test_ambiguous_launch_nonzero_preserves_active_job_until_reconciled(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        'service_directory.maintenance.observe_transient_unit',
+        lambda job_id, *, runner=subprocess.run: None,
+        raising=False,
+    )
+
+    def nonzero(*args):
+        raise RuntimeError('Could not start the independent updater; check the systemd user manager.')
+
+    state = maintenance(tmp_path, launcher=nonzero)
+    first = state.start()
+    with pytest.raises(MaintenanceError) as error:
+        state.start()
+    assert error.value.status_code == 409
+    assert state.job(first['id'])['status'] == 'queued'
+
+
+def test_stale_exact_job_read_uses_same_reconciliation_as_latest_job(tmp_path):
+    exact_state = maintenance(tmp_path / 'exact', time_fn=lambda: 2000)
+    exact_id = 'd' * 32
+    write_job(exact_state, exact_id, started_at=1)
+    atomic_json(exact_state.directory / 'latest-job.json', {'id': exact_id})
+
+    latest_state = maintenance(tmp_path / 'latest', time_fn=lambda: 2000)
+    latest_id = 'e' * 32
+    write_job(latest_state, latest_id, started_at=1)
+    atomic_json(latest_state.directory / 'latest-job.json', {'id': latest_id})
+
+    exact = exact_state.job(exact_id)
+    latest = latest_state.latest_job()
+
+    assert latest['status'] == 'failed'
+    assert exact['status'] == latest['status']
+    assert exact['message'] == latest['message']
+    persisted = json.loads((exact_state.directory / f'{exact_id}.json').read_text())
+    assert persisted['status'] == 'failed'
+
+
+def test_terminal_worker_write_is_not_resurrected_by_stale_read(tmp_path):
+    state = maintenance(tmp_path)
+    job_id = 'f' * 32
+    write_job(state, job_id, started_at=1)
+    atomic_json(state.directory / 'latest-job.json', {'id': job_id})
+
+    upgrader_started = threading.Event()
+    release_upgrader = threading.Event()
+
+    def upgrader(**kwargs):
+        upgrader_started.set()
+        assert release_upgrader.wait(5)
+        return UpgradeResult(True, False, '', ['stop', 'reinstall', 'verify'])
+
+    worker = threading.Thread(
+        target=run_worker,
+        args=(str(tmp_path), job_id),
+        kwargs={'upgrader': upgrader, 'verifier': lambda: True},
+    )
+    worker.start()
+    assert upgrader_started.wait(5)
+
+    stale_reader = maintenance(tmp_path, time_fn=lambda: 2000)
+    assert stale_reader.latest_job()['status'] == 'failed'
+
+    release_upgrader.set()
+    worker.join()
+
+    assert maintenance(tmp_path, time_fn=lambda: 2000).job(job_id)['status'] == 'failed'
 
 
 def test_worker_writes_terminal_result_and_requires_verification(tmp_path):
