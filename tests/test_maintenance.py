@@ -5,9 +5,13 @@ import builtins
 import functools
 import importlib.util
 import json
+import socket
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -173,6 +177,27 @@ def test_instance_info_probe_url_brackets_ipv6_literals():
     assert maintenance_module.instance_info_probe_url('2001:db8::1', 8085) == 'http://[2001:db8::1]:8085/api/instance-info'
 
 
+def test_instance_info_probe_url_percent_encodes_scoped_ipv6_for_urllib_transport(monkeypatch):
+    url = maintenance_module.instance_info_probe_url('fe80::1%eth0', 8085)
+    parsed = urllib.parse.urlsplit(url)
+    assert parsed.netloc == '[fe80::1%25eth0]:8085'
+    assert parsed.hostname == 'fe80::1%25eth0'
+
+    captured = {}
+
+    def fake_create_connection(address, timeout=None, source_address=None, *, all_errors=False):
+        captured['address'] = address
+        captured['timeout'] = timeout
+        raise OSError('stop')
+
+    monkeypatch.setattr(socket, 'create_connection', fake_create_connection)
+
+    with pytest.raises(urllib.error.URLError):
+        urllib.request.urlopen(url, timeout=1)
+
+    assert captured == {'address': ('fe80::1%eth0', 8085), 'timeout': 1}
+
+
 def test_verify_restarted_service_uses_configured_host_not_hardcoded_loopback(monkeypatch):
     requests = []
 
@@ -228,13 +253,49 @@ def test_verify_restarted_service_uses_configured_host_not_hardcoded_loopback(mo
     assert requests == []
 
 
+def test_verify_restarted_service_uses_configured_scoped_ipv6_host(monkeypatch):
+    requests = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def read(self):
+            return json.dumps(self.payload).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def urlopen(url, timeout):
+        requests.append((url, timeout))
+        assert urllib.parse.urlsplit(url).netloc == '[fe80::1%25eth0]:8085'
+        return Response({'version': '0.1.0'})
+
+    monkeypatch.setenv('SERVICE_REGISTRY_HOST', 'fe80::1%eth0')
+    monkeypatch.setenv('SERVICE_REGISTRY_PORT', '8085')
+    monkeypatch.setattr(
+        'service_directory.maintenance.SystemdUserServiceManager',
+        lambda: SimpleNamespace(status=lambda: SimpleNamespace(ok=True)),
+    )
+    monkeypatch.setattr('service_directory.maintenance.urllib.request.urlopen', urlopen)
+    monkeypatch.setattr('service_directory.maintenance.time.sleep', lambda *_: None)
+
+    assert maintenance_module.verify_restarted_service() is True
+    assert requests == [('http://[fe80::1%25eth0]:8085/api/instance-info', 1)]
+
+
 def test_probe_url_rejects_invalid_host_or_port_injection():
     for host in (
         'http://127.0.0.1',
         'user@127.0.0.1',
         '127.0.0.1:8085',
         'host/path',
-        'fe80::1%eth0',
+        'fe80::1%',
+        'fe80::1%eth/0',
+        'fe80::1%eth0%extra',
     ):
         with pytest.raises(ValueError):
             maintenance_module.instance_info_probe_url(host, 8085)
